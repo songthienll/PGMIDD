@@ -64,7 +64,7 @@ def save_generated_text(results: List[Dict],
     with open(metadata_file, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
     
-    print(f"\n✓ Saved {saved_count} text files to {text_dir}")
+    print(f"\n Saved {saved_count} text files to {text_dir}")
     print(f"  Metadata saved to: {metadata_file}")
     
     return metadata
@@ -200,7 +200,7 @@ def visualize_results(results: List[Dict],
     
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
-        print(f"\n✓ Visualization saved to {save_path}")
+        print(f"\n Visualization saved to {save_path}")
     
     plt.show()
 
@@ -322,4 +322,5 @@ if __name__ == "__main__":
     print("  - visualize_results()")
     print("  - visualize_by_category()")
     print("  - compare_defect_vs_normal()")
+
 
