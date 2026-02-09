@@ -17,7 +17,8 @@ MVTEC_CATEGORIES = [
 ]
 def load_mvtec_dataset(root_path: str, 
                        include_good: bool = False,
-                       categories: List[str] = None) -> List[Dict]:
+                       categories: List[str] = None,
+                       split: str = "both") -> List[Dict]:
     """
     Load MVTec AD dataset structure.
     
@@ -25,9 +26,15 @@ def load_mvtec_dataset(root_path: str,
         root_path: Path to MVTec AD root directory
         include_good: Whether to include 'good' (non-defective) samples
         categories: List of categories to load (None = all)
+        split: Which split to load - 'train', 'test', or 'both' (default: 'both')
         
     Returns:
         List of dicts with image info
+        
+    Note:
+        - Train split: ~3629 good samples (no defects)
+        - Test split: ~1725 samples (good + defective)
+        - Both: ~5354 total samples
     """
     root = Path(root_path)
     dataset = []
@@ -40,40 +47,61 @@ def load_mvtec_dataset(root_path: str,
         if not cat_path.exists():
             continue
         
-        # Test images (defective samples)
-        test_path = cat_path / "test"
-        gt_path = cat_path / "ground_truth"
-        
-        if test_path.exists():
-            for defect_type in os.listdir(test_path):
-                defect_path = test_path / defect_type
-                if not defect_path.is_dir():
-                    continue
-                
-                is_good = defect_type == "good"
-                if is_good and not include_good:
-                    continue
-                
-                for img_file in defect_path.iterdir():
+        # Train images (only good samples, no masks)
+        if split in ["train", "both"]:
+            train_path = cat_path / "train" / "good"
+            if train_path.exists():
+                for img_file in train_path.iterdir():
                     if img_file.suffix.lower() not in ['.png', '.jpg', '.jpeg']:
                         continue
                     
-                    # Get mask path (for defective samples)
-                    mask_path = None
-                    if not is_good:
-                        mask_name = img_file.stem + "_mask.png"
-                        mask_file = gt_path / defect_type / mask_name
-                        if mask_file.exists():
-                            mask_path = str(mask_file)
+                    if include_good:
+                        dataset.append({
+                            'image_path': str(img_file),
+                            'mask_path': None,
+                            'category': category,
+                            'defect_type': 'good',
+                            'image_name': img_file.stem,
+                            'is_good': True,
+                            'split': 'train'
+                        })
+        
+        # Test images (good + defective samples)
+        if split in ["test", "both"]:
+            test_path = cat_path / "test"
+            gt_path = cat_path / "ground_truth"
+            
+            if test_path.exists():
+                for defect_type in os.listdir(test_path):
+                    defect_path = test_path / defect_type
+                    if not defect_path.is_dir():
+                        continue
                     
-                    dataset.append({
-                        'image_path': str(img_file),
-                        'mask_path': mask_path,
-                        'category': category,
-                        'defect_type': defect_type,
-                        'image_name': img_file.stem,
-                        'is_good': is_good
-                    })
+                    is_good = defect_type == "good"
+                    if is_good and not include_good:
+                        continue
+                    
+                    for img_file in defect_path.iterdir():
+                        if img_file.suffix.lower() not in ['.png', '.jpg', '.jpeg']:
+                            continue
+                        
+                        # Get mask path (for defective samples)
+                        mask_path = None
+                        if not is_good:
+                            mask_name = img_file.stem + "_mask.png"
+                            mask_file = gt_path / defect_type / mask_name
+                            if mask_file.exists():
+                                mask_path = str(mask_file)
+                        
+                        dataset.append({
+                            'image_path': str(img_file),
+                            'mask_path': mask_path,
+                            'category': category,
+                            'defect_type': defect_type,
+                            'image_name': img_file.stem,
+                            'is_good': is_good,
+                            'split': 'test'
+                        })
     
     return dataset
 # =============================================================================
