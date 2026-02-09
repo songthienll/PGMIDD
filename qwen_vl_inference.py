@@ -298,39 +298,58 @@ def _process_batch(batch: List[Dict],
     """Process a single batch of images."""
     from qwen_vl_utils import process_vision_info
     
-    # Prepare batch inputs
     all_messages = []
     all_images = []
+    valid_indices = []
     
-    for item in batch:
-        is_good = item.get('defect_type') == 'good'
-        category = item.get('category', 'product')
-        
-        if is_good:
-            image_path = item.get('image_path')
-            prompt = get_prompt(is_good=True, category=category)
-        else:
-            image_path = item.get('annotated_path', item.get('image_path'))
-            location = item.get('location', 'Center') if use_location else 'Center'
-            prompt = get_prompt(is_good=False, location=location, category=category)
-        
-        image = Image.open(image_path).convert('RGB')
-        
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": prompt}
-                ]
-            }
-        ]
-        
-        all_messages.append(messages)
-        
-        # Process vision info
-        img_inputs, _ = process_vision_info(messages)
-        all_images.append(img_inputs[0] if img_inputs else image)
+    for idx, item in enumerate(batch):
+        try:
+            is_good = item.get('defect_type') == 'good'
+            category = item.get('category', 'product')
+            
+            # ===== FIX: Sửa logic lấy đường dẫn =====
+            # Ưu tiên: annotated_path > image_path
+            image_path = item.get('annotated_path') or item.get('image_path')
+            
+            # Nếu vẫn None, skip
+            if not image_path or not os.path.exists(image_path):
+                print(f"  Skipping invalid path at index {idx}")
+                continue
+            # =========================================
+            
+            if is_good:
+                prompt = get_prompt(is_good=True, category=category)
+            else:
+                location = item.get('location', 'Center') if use_location else 'Center'
+                prompt = get_prompt(is_good=False, location=location, category=category)
+            
+            # Try to open image
+            try:
+                image = Image.open(image_path).convert('RGB')
+            except Exception as e:
+                print(f"  Failed to open {image_path}: {e}")
+                continue
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ]
+            
+            all_messages.append(messages)
+            
+            # Process vision info
+            img_inputs, _ = process_vision_info(messages)
+            all_images.append(img_inputs[0] if img_inputs else image)
+            valid_indices.append(idx)
+            
+        except Exception as e:
+            print(f"  Error processing item {idx}: {e}")
+            continue
     
     # Batch tokenization
     texts = [
@@ -386,13 +405,17 @@ def _process_single_fallback(item: Dict,
         is_good = item.get('defect_type') == 'good'
         category = item.get('category', 'product')
         
+        image_path = item.get('annotated_path') or item.get('image_path')
+
+        if not image_path:
+            result['generated_text'] = "Error: No image path found"
+            return result
+
         if is_good:
-            image_path = item.get('image_path')
             description = describe_product_for_defects(
                 image_path, model, processor, category, max_tokens, temperature
             )
         else:
-            image_path = item.get('annotated_path', item.get('image_path'))
             location = item.get('location', 'Center')
             
             if use_location:
@@ -446,6 +469,7 @@ if __name__ == "__main__":
     recommended = select_model_for_gpu()
 
     print(f"   {recommended}")
+
 
 
 
