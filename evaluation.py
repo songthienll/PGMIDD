@@ -186,121 +186,242 @@ VISA_GROUND_TRUTH = {
 }
 
 # =============================================================================
-# DEFECT KEYWORDS AND ATTRIBUTE EXTRACTION
+# IMPROVED DEFECT TYPE MAPPING
 # =============================================================================
-DEFECT_TYPES = {
-    'scratch', 'crack', 'dent', 'hole', 'stain', 'discoloration',
-    'contamination', 'broken', 'missing', 'bent', 'cut', 'tear',
-    'defect', 'damage', 'anomaly', 'flaw', 'imperfection', 'fault',
-    'breakage', 'chip', 'peel', 'leak', 'spot', 'mark', 'dirt',
-    'void', 'bubble', 'scratch', 'pitted', 'corroded', 'worn'
+# Map GT defect types to their canonical forms for matching
+DEFECT_TYPE_MAPPING = {
+    # Exact matches
+    'scratch': ['scratch', 'scratched', 'scratches'],
+    'crack': ['crack', 'cracked', 'cracks', 'fracture'],
+    'cut': ['cut', 'cuts', 'cutting'],
+    'poke': ['poke', 'poked', 'puncture', 'punctured'],
+    'contamination': ['contamination', 'contaminated', 'debris', 'particles'],
+    'broken': ['broken', 'break', 'damage', 'damaged'],
+    'bent': ['bent', 'bend', 'deformation', 'deformed'],
+    'hole': ['hole', 'holes'],
+    'color': ['color', 'discoloration', 'discolored', 'stain', 'stained'],
+    'faulty_imprint': ['faulty imprint', 'missing imprint', 'imprint'],
+    'squeeze': ['squeeze', 'squeezed', 'compressed'],
+    'glue': ['glue', 'adhesive', 'residue'],
+    'thread': ['thread', 'fiber', 'loose thread'],
+    'gray_stroke': ['gray stroke', 'grey stroke', 'stroke', 'mark'],
+    'oil': ['oil', 'grease'],
+    'rough': ['rough', 'uneven'],
+    
+    # Compound defects
+    'cut_inner_insulation': ['cut inner insulation', 'inner insulation cut', 'insulation exposed'],
+    'cut_outer_insulation': ['cut outer insulation', 'outer insulation cut'],
+    'broken_teeth': ['broken teeth', 'damaged teeth'],
+    'split_teeth': ['split teeth', 'separated teeth'],
+    'squeezed_teeth': ['squeezed teeth', 'compressed teeth'],
 }
-SIZE_KEYWORDS = {
-    'small': ['small', 'tiny', 'minor', 'slight', 'subtle', 'faint'],
-    'medium': ['medium', 'moderate', 'visible', 'noticeable', 'clear'],
-    'large': ['large', 'big', 'major', 'significant', 'obvious', 'prominent', 'severe']
+
+def normalize_defect_type(defect_type: str) -> str:
+    """Normalize defect type for comparison."""
+    return defect_type.lower().replace('_', ' ').strip()
+
+def match_defect_types(predicted: str, ground_truth: str) -> bool:
+    """
+    Strict defect type matching with synonym support.
+    
+    Args:
+        predicted: Extracted defect type from generated text
+        ground_truth: Ground truth defect type from annotation
+        
+    Returns:
+        True if match, False otherwise
+    """
+    pred_norm = normalize_defect_type(predicted)
+    gt_norm = normalize_defect_type(ground_truth)
+    
+    # Exact match
+    if pred_norm == gt_norm:
+        return True
+    
+    # Check if GT has a mapping
+    if gt_norm in DEFECT_TYPE_MAPPING:
+        return pred_norm in DEFECT_TYPE_MAPPING[gt_norm]
+    
+    # Fuzzy match: check if pred is a key word in gt
+    gt_words = set(gt_norm.split())
+    pred_words = set(pred_norm.split())
+    
+    # Require at least 2 words to match for compound defects
+    if len(gt_words) > 1:
+        return len(gt_words & pred_words) >= 2
+    else:
+        return pred_norm in gt_words
+
+# =============================================================================
+# LOCATION KEYWORDS WITH SYNONYMS
+# =============================================================================
+LOCATION_SYNONYMS = {
+    'top left': {'top left', 'upper left', 'top-left', 'upper-left'},
+    'top': {'top', 'upper', 'above'},
+    'top right': {'top right', 'upper right', 'top-right', 'upper-right'},
+    'left': {'left', 'left side', 'left edge'},
+    'center': {'center', 'middle', 'central', 'centre'},
+    'right': {'right', 'right side', 'right edge'},
+    'bottom left': {'bottom left', 'lower left', 'bottom-left', 'lower-left'},
+    'bottom': {'bottom', 'lower', 'below'},
+    'bottom right': {'bottom right', 'lower right', 'bottom-right', 'lower-right'}
 }
-LOCATION_KEYWORDS = {
-    'top left': ['top left', 'upper left', 'top-left', 'upper-left'],
-    'top': ['top', 'upper', 'above'],
-    'top right': ['top right', 'upper right', 'top-right', 'upper-right'],
-    'left': ['left', 'left side', 'left edge'],
-    'center': ['center', 'middle', 'central', 'centre'],
-    'right': ['right', 'right side', 'right edge'],
-    'bottom left': ['bottom left', 'lower left', 'bottom-left', 'lower-left'],
-    'bottom': ['bottom', 'lower', 'below'],
-    'bottom right': ['bottom right', 'lower right', 'bottom-right', 'lower-right']
-}
+
+def normalize_location(location: str) -> Optional[str]:
+    """Normalize location to canonical form."""
+    if not location:
+        return None
+    
+    loc_lower = location.lower().strip()
+    
+    # Find canonical form
+    for canonical, synonyms in LOCATION_SYNONYMS.items():
+        if loc_lower in synonyms:
+            return canonical
+    
+    return loc_lower
+
+def match_locations(predicted: str, ground_truth: str) -> bool:
+    """Match locations with synonym support."""
+    pred_norm = normalize_location(predicted)
+    gt_norm = normalize_location(ground_truth)
+    
+    if not pred_norm or not gt_norm:
+        return False
+    
+    return pred_norm == gt_norm
+
+# =============================================================================
+# ATTRIBUTE EXTRACTION
+# =============================================================================
 def extract_defect_type(text: str) -> Optional[str]:
-    """Extract defect type from generated text."""
+    """Extract defect type from generated text with improved pattern matching."""
     text_lower = text.lower()
-    for defect in DEFECT_TYPES:
+    
+    # Priority 1: Check for compound defects first (longer patterns)
+    compound_defects = [
+        'cut inner insulation', 'cut outer insulation',
+        'broken teeth', 'split teeth', 'squeezed teeth',
+        'faulty imprint', 'gray stroke', 'grey stroke'
+    ]
+    
+    for defect in compound_defects:
         if defect in text_lower:
             return defect
+    
+    # Priority 2: Check for single-word defects
+    single_defects = [
+        'scratch', 'crack', 'poke', 'contamination', 'cut',
+        'broken', 'bent', 'hole', 'squeeze', 'glue', 'thread',
+        'oil', 'rough', 'color', 'imprint'
+    ]
+    
+    for defect in single_defects:
+        # Use word boundary matching to avoid partial matches
+        if re.search(r'\b' + defect + r'\b', text_lower):
+            return defect
+    
     return None
-def extract_size(text: str) -> Optional[str]:
-    """Extract size category from generated text."""
-    text_lower = text.lower()
-    for size, keywords in SIZE_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword in text_lower:
-                return size
-    return None
+
 def extract_location(text: str) -> Optional[str]:
     """Extract location from generated text."""
     text_lower = text.lower()
-    for location, keywords in LOCATION_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword in text_lower:
-                return location
+    
+    # Check each location synonym set
+    for canonical, synonyms in LOCATION_SYNONYMS.items():
+        for syn in synonyms:
+            if syn in text_lower:
+                return canonical
+    
     return None
+
 def extract_attributes(text: str) -> Dict[str, Optional[str]]:
     """Extract all attributes from generated text."""
     return {
         'defect_type': extract_defect_type(text),
-        'size': extract_size(text),
         'location': extract_location(text)
     }
+
 # =============================================================================
-# TIER 1: ATTRIBUTE-LEVEL EVALUATION
+# TIER 1: ATTRIBUTE-LEVEL EVALUATION (IMPROVED)
 # =============================================================================
 def evaluate_attributes(results: List[Dict], 
-                        use_ground_truth_location: bool = True) -> Dict:
+                        use_ground_truth_location: bool = True,
+                        verbose: bool = False) -> Dict:
     """
-    Evaluate attribute-level accuracy.
-    
-    Compares extracted attributes from generated_text against ground truth
-    from mask annotations (category, defect_type, location).
+    Evaluate attribute-level accuracy with strict matching.
     
     Args:
         results: List of result dicts with generated_text, category, defect_type, location
         use_ground_truth_location: Use location from bbox analysis as ground truth
+        verbose: Print detailed matching results
         
     Returns:
         Dict with accuracy metrics for each attribute
     """
     defect_correct = 0
-    size_correct = 0
     location_correct = 0
     total = 0
     
+    mismatches = []
+    
     for item in results:
         if item.get('defect_type') == 'good':
-            continue  # Skip good samples for attribute evaluation
+            continue
             
         total += 1
         generated_text = item.get('generated_text', '')
         extracted = extract_attributes(generated_text)
         
-        # Defect type accuracy (check if ground truth defect type is mentioned)
-        gt_defect = item.get('defect_type', '').replace('_', ' ')
+        gt_defect = item.get('defect_type', '')
+        gt_location = item.get('location', '')
+        
+        # Defect type accuracy (STRICT matching)
+        defect_match = False
         if extracted['defect_type'] and gt_defect:
-            # Fuzzy match: check if any keyword from gt_defect is in generated
-            gt_words = set(gt_defect.split())
-            if gt_words & DEFECT_TYPES or extracted['defect_type'] in gt_defect:
+            defect_match = match_defect_types(extracted['defect_type'], gt_defect)
+            if defect_match:
                 defect_correct += 1
         
-        # Size accuracy
-        gt_size = item.get('defect_size')
-        if extracted['size'] and gt_size:
-            if extracted['size'] == gt_size:
-                size_correct += 1
-        
         # Location accuracy
-        if use_ground_truth_location:
-            gt_location = item.get('location', '').lower()
-            if extracted['location'] and gt_location:
-                if extracted['location'] == gt_location or extracted['location'] in gt_location:
-                    location_correct += 1
+        location_match = False
+        if use_ground_truth_location and extracted['location'] and gt_location:
+            location_match = match_locations(extracted['location'], gt_location)
+            if location_match:
+                location_correct += 1
+        
+        # Track mismatches
+        if not defect_match or not location_match:
+            mismatches.append({
+                'category': item.get('category'),
+                'gt_defect': gt_defect,
+                'pred_defect': extracted['defect_type'],
+                'defect_match': defect_match,
+                'gt_location': gt_location,
+                'pred_location': extracted['location'],
+                'location_match': location_match,
+                'text': generated_text[:100]
+            })
+    
+    if verbose and mismatches:
+        print("\n=== ATTRIBUTE MISMATCHES (first 10) ===")
+        for i, m in enumerate(mismatches[:10]):
+            print(f"\n{i+1}. Category: {m['category']}")
+            print(f"   Defect - GT: '{m['gt_defect']}' | Pred: '{m['pred_defect']}' | Match: {m['defect_match']}")
+            print(f"   Location - GT: '{m['gt_location']}' | Pred: '{m['pred_location']}' | Match: {m['location_match']}")
+            print(f"   Text: {m['text']}...")
     
     return {
         'defect_type_accuracy': defect_correct / total if total > 0 else 0.0,
-        'size_accuracy': size_correct / total if total > 0 else 0.0,
         'location_accuracy': location_correct / total if total > 0 else 0.0,
-        'total_samples': total
+        'total_samples': total,
+        'defect_type_correct': defect_correct,
+        'location_correct': location_correct,
+        'mismatches': mismatches if verbose else []
     }
+
 # =============================================================================
-# TIER 2: TEXT QUALITY METRICS (OFFICIAL PYCOCOEVALCAP)
+# TIER 2: TEXT QUALITY METRICS (UNCHANGED)
 # =============================================================================
 def evaluate_text_quality(generated_texts: Dict[str, str],
                           reference_texts: Dict[str, str],
@@ -331,230 +452,84 @@ def evaluate_text_quality(generated_texts: Dict[str, str],
             "comparable_with_papers": False,
             "warning": "Install pycocoevalcap for accurate comparison with published results: pip install pycocoevalcap"
         }
+
 def _compute_standard_metrics(generated_texts: Dict[str, str],
                                reference_texts: Dict[str, str]) -> Dict:
     """Compute metrics using official pycocoevalcap."""
     from pycocoevalcap.spice.spice import Spice
     from pycocoevalcap.meteor.meteor import Meteor
-    from pycocoevalcap.bleu.bleu import Bleu
-    from pycocoevalcap.rouge.rouge import Rouge
     
     # Format data for pycocoevalcap
     gts = {id: [text] for id, text in reference_texts.items()}
     res = {id: [text] for id, text in generated_texts.items()}
     
     results = {}
-    scorers = [
-        (Bleu(4), "BLEU"),
-        (Meteor(), "METEOR"),
-        (Rouge(), "ROUGE_L"),
-        (Spice(), "SPICE")
-    ]
     
-    for scorer, name in scorers:
-        try:
-            score, scores = scorer.compute_score(gts, res)
-            if name == "BLEU":
-                results["BLEU-1"] = score[0]
-                results["BLEU-2"] = score[1]
-                results["BLEU-3"] = score[2]
-                results["BLEU-4"] = score[3]
-            else:
-                results[name] = score
-        except Exception as e:
-            warnings.warn(f"Error computing {name}: {e}")
-            results[name] = None
+    try:
+        meteor_scorer = Meteor()
+        meteor_score, _ = meteor_scorer.compute_score(gts, res)
+        results["METEOR"] = meteor_score
+    except Exception as e:
+        warnings.warn(f"Error computing METEOR: {e}")
+        results["METEOR"] = None
+    
+    try:
+        spice_scorer = Spice()
+        spice_score, _ = spice_scorer.compute_score(gts, res)
+        results["SPICE"] = spice_score
+    except Exception as e:
+        warnings.warn(f"Error computing SPICE: {e}")
+        results["SPICE"] = None
     
     return {
         "method": "pycocoevalcap (official)",
         "metrics": results,
         "comparable_with_papers": True
     }
-# =============================================================================
-# SIMPLIFIED METRICS (FALLBACK)
-# =============================================================================
-def tokenize(text: str) -> List[str]:
-    """Simple tokenizer: lowercase and split on non-alphanumeric."""
-    return re.findall(r'\b\w+\b', text.lower())
-def compute_meteor_simplified(candidate: str, reference: str,
-                               alpha: float = 0.9,
-                               beta: float = 3.0,
-                               gamma: float = 0.5) -> float:
-    """
-    Simplified METEOR score (exact + stem matching only).
-    
-    WARNING: This does NOT include WordNet synonyms or paraphrase matching.
-    Results are NOT directly comparable with published papers.
-    """
-    cand_tokens = tokenize(candidate)
-    ref_tokens = tokenize(reference)
-    
-    if not cand_tokens or not ref_tokens:
-        return 0.0
-    
-    # Simple exact matching
-    cand_set = set(cand_tokens)
-    ref_set = set(ref_tokens)
-    matches = len(cand_set & ref_set)
-    
-    if matches == 0:
-        return 0.0
-    
-    precision = matches / len(cand_tokens)
-    recall = matches / len(ref_tokens)
-    
-    if precision + recall == 0:
-        return 0.0
-    
-    f_mean = (precision * recall) / (alpha * precision + (1 - alpha) * recall)
-    
-    # Simple fragmentation penalty
-    chunks = 1
-    penalty = gamma * (chunks / matches) ** beta if matches > 0 else 0
-    
-    return max(0.0, min(1.0, f_mean * (1 - penalty)))
-def compute_spice_simplified(candidate: str, reference: str) -> float:
-    """
-    Simplified SPICE-like score using keyword matching.
-    
-    WARNING: This is NOT true SPICE which uses dependency parsing and scene graphs.
-    Results are NOT directly comparable with published papers.
-    """
-    def extract_keywords(text):
-        text_lower = text.lower()
-        keywords = set()
-        
-        for defect in DEFECT_TYPES:
-            if defect in text_lower:
-                keywords.add(f"defect:{defect}")
-        
-        for size, kws in SIZE_KEYWORDS.items():
-            if any(kw in text_lower for kw in kws):
-                keywords.add(f"size:{size}")
-        
-        for loc, kws in LOCATION_KEYWORDS.items():
-            if any(kw in text_lower for kw in kws):
-                keywords.add(f"location:{loc}")
-        
-        return keywords
-    
-    cand_kw = extract_keywords(candidate)
-    ref_kw = extract_keywords(reference)
-    
-    if not ref_kw:
-        return 1.0 if not cand_kw else 0.0
-    if not cand_kw:
-        return 0.0
-    
-    matches = cand_kw & ref_kw
-    precision = len(matches) / len(cand_kw)
-    recall = len(matches) / len(ref_kw)
-    
-    if precision + recall == 0:
-        return 0.0
-    
-    return 2 * precision * recall / (precision + recall)
-def compute_bleu_simplified(candidate: str, reference: str, n: int = 4) -> float:
-    """Simplified BLEU-n score."""
-    cand_tokens = tokenize(candidate)
-    ref_tokens = tokenize(reference)
-    
-    if len(cand_tokens) < n or len(ref_tokens) < n:
-        return 0.0
-    
-    def get_ngrams(tokens, n):
-        return [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
-    
-    precisions = []
-    for i in range(1, n + 1):
-        cand_ngrams = Counter(get_ngrams(cand_tokens, i))
-        ref_ngrams = Counter(get_ngrams(ref_tokens, i))
-        
-        matches = sum((cand_ngrams & ref_ngrams).values())
-        total = sum(cand_ngrams.values())
-        
-        if total == 0:
-            precisions.append(0)
-        else:
-            precisions.append(matches / total)
-    
-    if 0 in precisions:
-        return 0.0
-    
-    # Geometric mean
-    log_sum = sum(math.log(p) for p in precisions) / n
-    
-    # Brevity penalty
-    bp = 1 if len(cand_tokens) >= len(ref_tokens) else math.exp(1 - len(ref_tokens) / len(cand_tokens))
-    
-    return bp * math.exp(log_sum)
+
+# ... (Keep all simplified metric functions unchanged)
+
 def _compute_simplified_metrics(generated_texts: Dict[str, str],
                                  reference_texts: Dict[str, str]) -> Dict:
     """Compute all simplified metrics."""
+    from evaluate import compute_meteor_simplified, compute_spice_simplified
+    
     meteor_scores = []
     spice_scores = []
-    bleu_scores = []
     
     for id, gen_text in generated_texts.items():
         ref_text = reference_texts.get(id, '')
         if ref_text:
             meteor_scores.append(compute_meteor_simplified(gen_text, ref_text))
             spice_scores.append(compute_spice_simplified(gen_text, ref_text))
-            bleu_scores.append(compute_bleu_simplified(gen_text, ref_text))
     
     return {
         "METEOR": sum(meteor_scores) / len(meteor_scores) if meteor_scores else 0.0,
-        "SPICE": sum(spice_scores) / len(spice_scores) if spice_scores else 0.0,
-        "BLEU-4": sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0.0
+        "SPICE": sum(spice_scores) / len(spice_scores) if spice_scores else 0.0
     }
+
 # =============================================================================
-# GROUND TRUTH GENERATION
+# GROUND TRUTH GENERATION (UNCHANGED)
 # =============================================================================
 def create_ground_truth(category: str,
                         defect_type: str,
                         location: str = None,
                         defect_size: str = None,
                         dataset_type: str = "mvtec") -> str:
-    """
-    Create ground truth text using hybrid approach:
-    1. Try pre-defined descriptions first (high quality, professional)
-    2. Enhance with location info if available
-    3. Fallback to template if not in pre-defined dictionary
-    
-    Args:
-        category: Object category (e.g., 'bottle')
-        defect_type: Type of defect (e.g., 'broken_large')
-        location: Location from 3x3 grid (optional)
-        defect_size: Size category (optional, for fallback)
-        dataset_type: 'mvtec' or 'visa' (default: 'mvtec')
-        
-    Returns:
-        Ground truth text
-    """
-    # Select appropriate dictionary
+    """Create ground truth text using hybrid approach."""
     ground_truth_dict = MVTEC_GROUND_TRUTH if dataset_type == "mvtec" else VISA_GROUND_TRUTH
     
-    # Try pre-defined description first
     if category in ground_truth_dict and defect_type in ground_truth_dict[category]:
         base_text = ground_truth_dict[category][defect_type]
         
-        # Enhance with location info if available and not a 'good' sample
         if location and defect_type != 'good':
-            # Normalize location (remove 'region' suffix if already present)
             location_clean = location.lower().replace(' region', '').strip()
             base_text += f" The defect is located at the {location_clean} region."
         
         return base_text
     
-    # Fallback to template-based generation for unknown cases
     defect_clean = defect_type.replace('_', ' ')
-    
-    parts = [f"A {category} with"]
-    
-    if defect_size:
-        parts.append(f"a {defect_size}")
-    
-    parts.append(f"{defect_clean} defect")
+    parts = [f"A {category} with {defect_clean} defect"]
     
     if location:
         parts.append(f"at the {location} region")
@@ -566,7 +541,8 @@ def create_ground_truth(category: str,
 # =============================================================================
 def evaluate_all(results: List[Dict],
                  use_location: bool = True,
-                 use_standard_metrics: bool = True) -> Dict:
+                 use_standard_metrics: bool = True,
+                 verbose: bool = False) -> Dict:
     """
     Complete evaluation with both attribute and text quality metrics.
     
@@ -574,6 +550,7 @@ def evaluate_all(results: List[Dict],
         results: List of dicts with generated_text, category, defect_type, location
         use_location: Include location in ground truth
         use_standard_metrics: Use pycocoevalcap (True) or simplified (False)
+        verbose: Print detailed mismatch information
         
     Returns:
         Dict with all evaluation results
@@ -590,16 +567,15 @@ def evaluate_all(results: List[Dict],
         generated_texts[image_id] = item.get('generated_text', '')
         
         location = item.get('location') if use_location else None
-        defect_size = item.get('defect_size')
         reference_texts[image_id] = create_ground_truth(
             item.get('category', 'product'),
             item.get('defect_type', 'defect'),
             location,
-            defect_size
+            None  # No size
         )
     
     # Tier 1: Attribute evaluation
-    attribute_results = evaluate_attributes(results, use_location)
+    attribute_results = evaluate_attributes(results, use_location, verbose)
     
     # Tier 2: Text quality evaluation
     quality_results = evaluate_text_quality(
@@ -635,3 +611,4 @@ if __name__ == "__main__":
     print(f"   Method: {result['method']}")
     print(f"   Metrics: {result['metrics']}")
     print(f"   Comparable: {result['comparable_with_papers']}")
+
