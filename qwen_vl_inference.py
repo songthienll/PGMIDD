@@ -429,7 +429,7 @@ def batch_inference_b(annotated_images: List[Dict],
         max_tokens=max_tokens,
         temperature=temperature,
         show_progress=show_progress
-        
+    )
 if __name__ == "__main__":
     print("Qwen2-VL Inference Module\n" + "="*50)
     
@@ -446,5 +446,6 @@ if __name__ == "__main__":
     recommended = select_model_for_gpu()
 
     print(f"   {recommended}")
+
 
 
