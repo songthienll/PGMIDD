@@ -105,8 +105,8 @@ load_qwen_model = load_qwen2_vl_model
 # =============================================================================
 # PROMPTS
 # =============================================================================
-DEFECT_PROMPT = """Provide a concise description of the industrial defect in this image.
-Include the object type, defect type and location type. Focus on key visual characteristics only.
+DEFECT_PROMPT = """Provide a concise description of the industrial defect in the red-outlined area. 
+Include the object type, defect type, location and visual details. 
 Example: Metal surface has a scratch with a linear mark at the bottom right."""
 
 NORMAL_PROMPT = """Inspect this image for defects.
@@ -446,6 +446,7 @@ if __name__ == "__main__":
     recommended = select_model_for_gpu()
 
     print(f"   {recommended}")
+
 
 
 
