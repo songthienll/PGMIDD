@@ -109,9 +109,9 @@ DEFECT_PROMPT = """Provide a concise description of the industrial defect in thi
 Include the object type, defect type and location type. Focus on key visual characteristics only.
 Example: Metal surface has a scratch with a linear mark at the bottom right."""
 
-NORMAL_PROMPT = """Provide a concise description of this normal/good industrial object image.
-Describe the object type and that it has no visible defects.
-Example: A clean glass bottle with no visible defects."""
+NORMAL_PROMPT = """Inspect this image for defects.
+Describe it in one sentence following this format: "A normal [product type] with no visible defects."
+Example: A normal toothbrush with no visible defects."""
 def get_prompt(is_good: bool, location: str = "Center", category: str = "product") -> str:
     """
     Get appropriate prompt based on image type.
@@ -444,4 +444,5 @@ if __name__ == "__main__":
     
     print("\n3. Recommended Model:")
     recommended = select_model_for_gpu()
+
     print(f"   {recommended}")
