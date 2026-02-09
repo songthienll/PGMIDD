@@ -184,9 +184,6 @@ def visualize_results(results: List[Dict],
         
         # Add generated text
         generated_text = result.get('generated_text', 'No text generated')
-        # Wrap text if too long
-        if len(generated_text) > 80:
-            generated_text = generated_text[:77] + '...'
         
         title_parts.append(f"\n\"{generated_text}\"")
         
@@ -325,3 +322,4 @@ if __name__ == "__main__":
     print("  - visualize_results()")
     print("  - visualize_by_category()")
     print("  - compare_defect_vs_normal()")
+
