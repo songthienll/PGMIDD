@@ -410,7 +410,26 @@ def _process_single_fallback(item: Dict,
         result['generated_text'] = f"Error: {str(e)}"
     
     return result
-
+# Legacy function for backward compatibility
+def batch_inference_b(annotated_images: List[Dict],
+                    model,
+                    processor,
+                    use_location: bool = True,
+                    max_tokens: int = 100,
+                    temperature: float = 0.1,
+                    show_progress: bool = True) -> List[Dict]:
+    """
+    Process images sequentially (legacy, for compatibility).
+    Use batch_inference_optimized for better performance.
+    """
+    return batch_inference(
+        annotated_images, model, processor,
+        batch_size=1,  # Sequential
+        use_location=use_location,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        show_progress=show_progress
+        
 if __name__ == "__main__":
     print("Qwen2-VL Inference Module\n" + "="*50)
     
@@ -427,4 +446,5 @@ if __name__ == "__main__":
     recommended = select_model_for_gpu()
 
     print(f"   {recommended}")
+
 
