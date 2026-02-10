@@ -328,9 +328,7 @@ def evaluate_all(results: List[Dict],
         )
         
     # Text quality evaluation
-    quality_results = evaluate_text_quality(
-        generated_texts, reference_texts, use_standard_metrics
-    )
+    quality_results = evaluate_text_quality(generated_texts, reference_texts, use_standard_metrics)
     
     return {
         "attribute_accuracy": attribute_results,
@@ -348,5 +346,6 @@ if __name__ == "__main__":
     result = evaluate_text_quality(gen, ref, use_standard=False)
     print(f"   Method: {result['method']}")
     print(f"   Metrics: {result['metrics']}")
+
 
 
