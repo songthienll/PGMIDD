@@ -185,244 +185,6 @@ VISA_GROUND_TRUTH = {
     }
 }
 
-# =============================================================================
-# IMPROVED DEFECT TYPE MAPPING
-# =============================================================================
-# Map GT defect types to their canonical forms for matching
-DEFECT_TYPE_MAPPING = {
-    # Exact matches
-    'scratch': ['scratch', 'scratched', 'scratches'],
-    'crack': ['crack', 'cracked', 'cracks', 'fracture'],
-    'cut': ['cut', 'cuts', 'cutting'],
-    'poke': ['poke', 'poked', 'puncture', 'punctured'],
-    'contamination': ['contamination', 'contaminated', 'debris', 'particles'],
-    'broken': ['broken', 'break', 'damage', 'damaged'],
-    'bent': ['bent', 'bend', 'deformation', 'deformed'],
-    'hole': ['hole', 'holes'],
-    'color': ['color', 'discoloration', 'discolored', 'stain', 'stained'],
-    'faulty_imprint': ['faulty imprint', 'missing imprint', 'imprint'],
-    'squeeze': ['squeeze', 'squeezed', 'compressed'],
-    'glue': ['glue', 'adhesive', 'residue'],
-    'thread': ['thread', 'fiber', 'loose thread'],
-    'gray_stroke': ['gray stroke', 'grey stroke', 'stroke', 'mark'],
-    'oil': ['oil', 'grease'],
-    'rough': ['rough', 'uneven'],
-    
-    # Compound defects
-    'cut_inner_insulation': ['cut inner insulation', 'inner insulation cut', 'insulation exposed'],
-    'cut_outer_insulation': ['cut outer insulation', 'outer insulation cut'],
-    'broken_teeth': ['broken teeth', 'damaged teeth'],
-    'split_teeth': ['split teeth', 'separated teeth'],
-    'squeezed_teeth': ['squeezed teeth', 'compressed teeth'],
-}
-
-def normalize_defect_type(defect_type: str) -> str:
-    """Normalize defect type for comparison."""
-    return defect_type.lower().replace('_', ' ').strip()
-
-def match_defect_types(predicted: str, ground_truth: str) -> bool:
-    """
-    Strict defect type matching with synonym support.
-    
-    Args:
-        predicted: Extracted defect type from generated text
-        ground_truth: Ground truth defect type from annotation
-        
-    Returns:
-        True if match, False otherwise
-    """
-    pred_norm = normalize_defect_type(predicted)
-    gt_norm = normalize_defect_type(ground_truth)
-    
-    # Exact match
-    if pred_norm == gt_norm:
-        return True
-    
-    # Check if GT has a mapping
-    if gt_norm in DEFECT_TYPE_MAPPING:
-        return pred_norm in DEFECT_TYPE_MAPPING[gt_norm]
-    
-    # Fuzzy match: check if pred is a key word in gt
-    gt_words = set(gt_norm.split())
-    pred_words = set(pred_norm.split())
-    
-    # Require at least 2 words to match for compound defects
-    if len(gt_words) > 1:
-        return len(gt_words & pred_words) >= 2
-    else:
-        return pred_norm in gt_words
-
-# =============================================================================
-# LOCATION KEYWORDS WITH SYNONYMS
-# =============================================================================
-LOCATION_SYNONYMS = {
-    'top left': {'top left', 'upper left', 'top-left', 'upper-left'},
-    'top': {'top', 'upper', 'above'},
-    'top right': {'top right', 'upper right', 'top-right', 'upper-right'},
-    'left': {'left', 'left side', 'left edge'},
-    'center': {'center', 'middle', 'central', 'centre'},
-    'right': {'right', 'right side', 'right edge'},
-    'bottom left': {'bottom left', 'lower left', 'bottom-left', 'lower-left'},
-    'bottom': {'bottom', 'lower', 'below'},
-    'bottom right': {'bottom right', 'lower right', 'bottom-right', 'lower-right'}
-}
-
-def normalize_location(location: str) -> Optional[str]:
-    """Normalize location to canonical form."""
-    if not location:
-        return None
-    
-    loc_lower = location.lower().strip()
-    
-    # Find canonical form
-    for canonical, synonyms in LOCATION_SYNONYMS.items():
-        if loc_lower in synonyms:
-            return canonical
-    
-    return loc_lower
-
-def match_locations(predicted: str, ground_truth: str) -> bool:
-    """Match locations with synonym support."""
-    pred_norm = normalize_location(predicted)
-    gt_norm = normalize_location(ground_truth)
-    
-    if not pred_norm or not gt_norm:
-        return False
-    
-    return pred_norm == gt_norm
-
-# =============================================================================
-# ATTRIBUTE EXTRACTION
-# =============================================================================
-def extract_defect_type(text: str) -> Optional[str]:
-    """Extract defect type from generated text with improved pattern matching."""
-    text_lower = text.lower()
-    
-    # Priority 1: Check for compound defects first (longer patterns)
-    compound_defects = [
-        'cut inner insulation', 'cut outer insulation',
-        'broken teeth', 'split teeth', 'squeezed teeth',
-        'faulty imprint', 'gray stroke', 'grey stroke'
-    ]
-    
-    for defect in compound_defects:
-        if defect in text_lower:
-            return defect
-    
-    # Priority 2: Check for single-word defects
-    single_defects = [
-        'scratch', 'crack', 'poke', 'contamination', 'cut',
-        'broken', 'bent', 'hole', 'squeeze', 'glue', 'thread',
-        'oil', 'rough', 'color', 'imprint'
-    ]
-    
-    for defect in single_defects:
-        # Use word boundary matching to avoid partial matches
-        if re.search(r'\b' + defect + r'\b', text_lower):
-            return defect
-    
-    return None
-
-def extract_location(text: str) -> Optional[str]:
-    """Extract location from generated text."""
-    text_lower = text.lower()
-    
-    # Check each location synonym set
-    for canonical, synonyms in LOCATION_SYNONYMS.items():
-        for syn in synonyms:
-            if syn in text_lower:
-                return canonical
-    
-    return None
-
-def extract_attributes(text: str) -> Dict[str, Optional[str]]:
-    """Extract all attributes from generated text."""
-    return {
-        'defect_type': extract_defect_type(text),
-        'location': extract_location(text)
-    }
-
-# =============================================================================
-# TIER 1: ATTRIBUTE-LEVEL EVALUATION (IMPROVED)
-# =============================================================================
-def evaluate_attributes(results: List[Dict], 
-                        use_ground_truth_location: bool = True,
-                        verbose: bool = False) -> Dict:
-    """
-    Evaluate attribute-level accuracy with strict matching.
-    
-    Args:
-        results: List of result dicts with generated_text, category, defect_type, location
-        use_ground_truth_location: Use location from bbox analysis as ground truth
-        verbose: Print detailed matching results
-        
-    Returns:
-        Dict with accuracy metrics for each attribute
-    """
-    defect_correct = 0
-    location_correct = 0
-    total = 0
-    
-    mismatches = []
-    
-    for item in results:
-        if item.get('defect_type') == 'good':
-            continue
-            
-        total += 1
-        generated_text = item.get('generated_text', '')
-        extracted = extract_attributes(generated_text)
-        
-        gt_defect = item.get('defect_type', '')
-        gt_location = item.get('location', '')
-        
-        # Defect type accuracy (STRICT matching)
-        defect_match = False
-        if extracted['defect_type'] and gt_defect:
-            defect_match = match_defect_types(extracted['defect_type'], gt_defect)
-            if defect_match:
-                defect_correct += 1
-        
-        # Location accuracy
-        location_match = False
-        if use_ground_truth_location and extracted['location'] and gt_location:
-            location_match = match_locations(extracted['location'], gt_location)
-            if location_match:
-                location_correct += 1
-        
-        # Track mismatches
-        if not defect_match or not location_match:
-            mismatches.append({
-                'category': item.get('category'),
-                'gt_defect': gt_defect,
-                'pred_defect': extracted['defect_type'],
-                'defect_match': defect_match,
-                'gt_location': gt_location,
-                'pred_location': extracted['location'],
-                'location_match': location_match,
-                'text': generated_text[:100]
-            })
-    
-    if verbose and mismatches:
-        print("\n=== ATTRIBUTE MISMATCHES (first 10) ===")
-        for i, m in enumerate(mismatches[:10]):
-            print(f"\n{i+1}. Category: {m['category']}")
-            print(f"   Defect - GT: '{m['gt_defect']}' | Pred: '{m['pred_defect']}' | Match: {m['defect_match']}")
-            print(f"   Location - GT: '{m['gt_location']}' | Pred: '{m['pred_location']}' | Match: {m['location_match']}")
-            print(f"   Text: {m['text']}...")
-    
-    return {
-        'defect_type_accuracy': defect_correct / total if total > 0 else 0.0,
-        'location_accuracy': location_correct / total if total > 0 else 0.0,
-        'total_samples': total,
-        'defect_type_correct': defect_correct,
-        'location_correct': location_correct,
-        'mismatches': mismatches if verbose else []
-    }
-
-# =============================================================================
-# TIER 2: TEXT QUALITY METRICS (UNCHANGED)
-# =============================================================================
 def evaluate_text_quality(generated_texts: Dict[str, str],
                           reference_texts: Dict[str, str],
                           use_standard: bool = True) -> Dict:
@@ -447,9 +209,7 @@ def evaluate_text_quality(generated_texts: Dict[str, str],
     if not use_standard:
         results = _compute_simplified_metrics(generated_texts, reference_texts)
         return {
-            "method": "simplified (NOT COMPARABLE WITH PAPERS)",
             "metrics": results,
-            "comparable_with_papers": False,
             "warning": "Install pycocoevalcap for accurate comparison with published results: pip install pycocoevalcap"
         }
 
@@ -484,10 +244,7 @@ def _compute_standard_metrics(generated_texts: Dict[str, str],
     return {
         "method": "pycocoevalcap (official)",
         "metrics": results,
-        "comparable_with_papers": True
     }
-
-# ... (Keep all simplified metric functions unchanged)
 
 def _compute_simplified_metrics(generated_texts: Dict[str, str],
                                  reference_texts: Dict[str, str]) -> Dict:
@@ -508,9 +265,6 @@ def _compute_simplified_metrics(generated_texts: Dict[str, str],
         "SPICE": sum(spice_scores) / len(spice_scores) if spice_scores else 0.0
     }
 
-# =============================================================================
-# GROUND TRUTH GENERATION (UNCHANGED)
-# =============================================================================
 def create_ground_truth(category: str,
                         defect_type: str,
                         location: str = None,
@@ -571,13 +325,9 @@ def evaluate_all(results: List[Dict],
             item.get('category', 'product'),
             item.get('defect_type', 'defect'),
             location,
-            None  # No size
         )
-    
-    # Tier 1: Attribute evaluation
-    attribute_results = evaluate_attributes(results, use_location, verbose)
-    
-    # Tier 2: Text quality evaluation
+        
+    # Text quality evaluation
     quality_results = evaluate_text_quality(
         generated_texts, reference_texts, use_standard_metrics
     )
@@ -585,31 +335,18 @@ def evaluate_all(results: List[Dict],
     return {
         "attribute_accuracy": attribute_results,
         "text_quality": quality_results,
-        "summary": {
-            "defect_type_accuracy": attribute_results['defect_type_accuracy'],
-            "location_accuracy": attribute_results['location_accuracy'],
-            "comparable_with_papers": quality_results.get('comparable_with_papers', False),
-            "num_samples": attribute_results['total_samples']
-        }
+        "summary": {"num_samples": attribute_results['total_samples']}
     }
 if __name__ == "__main__":
     print("Testing Evaluation Module\n" + "="*50)
     
-    # Test attribute extraction
-    print("\n1. Attribute Extraction Test:")
-    test_text = "A large scratch defect on the top left area of the wood surface."
-    attrs = extract_attributes(test_text)
-    print(f"   Text: {test_text}")
-    print(f"   Extracted: {attrs}")
-    
     # Test metrics
-    print("\n2. Metrics Test:")
+    print("\n Metrics Test:")
     gen = {"0": "A scratch on the wood at the center"}
     ref = {"0": "A wood with scratch defect at the Center region"}
     
     result = evaluate_text_quality(gen, ref, use_standard=False)
     print(f"   Method: {result['method']}")
     print(f"   Metrics: {result['metrics']}")
-    print(f"   Comparable: {result['comparable_with_papers']}")
 
 
