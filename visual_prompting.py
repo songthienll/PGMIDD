@@ -96,7 +96,7 @@ def create_annotated_image(image_path: str,
     Returns:
         Annotated image array
     """
-    image = cv2.imread(image_path)
+    image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED) # Prevent grayscale image to BGR
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
     
     if image is None or mask is None:
@@ -197,4 +197,5 @@ if __name__ == "__main__":
     print(f"Input shape: {test_image.shape}")
     print(f"Mask shape: {test_mask.shape}")
     print(f"Output shape: {annotated.shape}")
+
     print("Visual prompting test complete!")
