@@ -492,7 +492,7 @@ def _compute_standard_metrics(generated_texts: Dict[str, str],
 def _compute_simplified_metrics(generated_texts: Dict[str, str],
                                  reference_texts: Dict[str, str]) -> Dict:
     """Compute all simplified metrics."""
-    from evaluate import compute_meteor_simplified, compute_spice_simplified
+    from evaluation import compute_meteor_simplified, compute_spice_simplified
     
     meteor_scores = []
     spice_scores = []
@@ -611,4 +611,5 @@ if __name__ == "__main__":
     print(f"   Method: {result['method']}")
     print(f"   Metrics: {result['metrics']}")
     print(f"   Comparable: {result['comparable_with_papers']}")
+
 
