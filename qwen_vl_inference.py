@@ -307,11 +307,8 @@ def _process_batch(batch: List[Dict],
             is_good = item.get('defect_type') == 'good'
             category = item.get('category', 'product')
             
-            # ===== FIX: Sửa logic lấy đường dẫn =====
-            # Ưu tiên: annotated_path > image_path
             image_path = item.get('annotated_path') or item.get('image_path')
             
-            # Nếu vẫn None, skip
             if not image_path or not os.path.exists(image_path):
                 print(f"  Skipping invalid path at index {idx}")
                 continue
@@ -469,6 +466,7 @@ if __name__ == "__main__":
     recommended = select_model_for_gpu()
 
     print(f"   {recommended}")
+
 
 
 
