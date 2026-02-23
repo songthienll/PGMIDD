@@ -189,60 +189,30 @@ LOCATION_LABELS = [
 # 2. UTILITY HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_knowledge_prompt(category: str) -> str:
-    """Build a domain knowledge snippet for the given MVTec category."""
+def build_prompt(category: str, location_hint: str | None, is_good: bool) -> str:
+    """
+    Compact prompt — keeps accuracy gains but is much shorter than the CoT version.
+    Shorter prompt = fewer tokens to process per image = faster batching.
+    """
     info = MVTEC_DEFECT_KNOWLEDGE.get(category, {})
-    if not info:
-        return ""
-    defect_list = ", ".join(info.get("defects", []))
-    desc_lines = "\n".join(
-        f"  - {k}: {v}" for k, v in info.get("descriptions", {}).items()
-    )
-    normal = info.get("normal_description", "")
+    valid_defects = info.get("defects", [])
+    normal_desc = info.get("normal_description", f"a normal {category}")
+    valid_str = ", ".join(valid_defects)
+
+    if is_good:
+        return (
+            f"Inspect this {category}. Normal: {normal_desc}. "
+            f"Possible defects: {valid_str}. "
+            f"Reply ONLY:\nDefect: good\nLocation: none\nDescription: <one sentence>"
+        )
+
+    loc_str = f"Defect region is at {location_hint}." if location_hint else "Defect region is highlighted in red."
     return (
-        f"DOMAIN KNOWLEDGE for '{category}':\n"
-        f"  Normal appearance: {normal}\n"
-        f"  Possible defect types: {defect_list}\n"
-        f"  Defect definitions:\n{desc_lines}\n"
+        f"Inspect this {category}. {loc_str} "
+        f"Normal: {normal_desc}. "
+        f"Choose defect type from ONLY: [{valid_str}]. "
+        f"Reply ONLY:\nDefect: <type>\nLocation: {location_hint or '<location>'}\nDescription: <one sentence>"
     )
-
-
-def build_cot_prompt(category: str, location_hint: str | None, valid_defects: list[str]) -> str:
-    """
-    Build a Chain-of-Thought prompt that:
-      - Injects domain knowledge (Knowledge Guide)
-      - Anchors location from mask bbox (removes location hallucination)
-      - Constrains defect vocabulary (reduces type hallucination)
-    """
-    knowledge = get_knowledge_prompt(category)
-    valid_str = ", ".join(valid_defects) if valid_defects else "unknown"
-
-    location_instruction = ""
-    if location_hint:
-        location_instruction = (
-            f"The defective region has been highlighted with a red contour in the image. "
-            f"Based on the mask analysis, the defect is located at: {location_hint}.\n"
-        )
-    else:
-        location_instruction = (
-            "The defective region has been highlighted with a red contour in the image. "
-            "Identify its location from: " + ", ".join(LOCATION_LABELS) + ".\n"
-        )
-
-    prompt = (
-        f"{knowledge}\n"
-        f"You are an industrial quality control inspector analyzing a '{category}' component.\n"
-        f"{location_instruction}\n"
-        f"Step 1 - Examine the highlighted region carefully.\n"
-        f"Step 2 - Compare it with normal appearance: {MVTEC_DEFECT_KNOWLEDGE.get(category, {}).get('normal_description', 'a normal component')}.\n"
-        f"Step 3 - Identify the defect type. Choose ONLY from this list: [{valid_str}].\n"
-        f"Step 4 - Output your answer in this exact format:\n"
-        f"  Defect: <defect_type>\n"
-        f"  Location: <location>\n"
-        f"  Description: <one sentence describing the defect>\n\n"
-        f"Answer:"
-    )
-    return prompt
 
 
 def parse_model_output(text: str, valid_defects: list[str], location_hint: str | None) -> dict:
@@ -303,151 +273,151 @@ def load_qwen2_vl_model(model_name: str = "Qwen/Qwen2-VL-2B-Instruct"):
         device_map="auto",
     )
     processor = AutoProcessor.from_pretrained(model_name)
+    # Disable padding-side issues for batch inference
+    processor.tokenizer.padding_side = "left"
     print("Model loaded successfully!")
     return model, processor
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. SINGLE-SAMPLE INFERENCE
+# 4. BATCH INFERENCE  (true GPU batching — main speedup)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_single_inference(
-    item: dict,
-    model,
-    processor,
-    max_tokens: int = 150,
-    temperature: float = 0.1,
-) -> dict:
+def _prepare_batch(items: list[dict], processor) -> tuple[dict, list]:
     """
-    Run Echo-inspired inference for a single image item.
-    
-    Key improvements over vanilla inference:
-      - Domain knowledge injected (Knowledge Guide)
-      - Location anchored from mask bbox (no hallucination)
-      - Constrained defect vocabulary per category (no wrong type)
-      - Chain-of-Thought structured prompt (Reasoning Expert)
+    Prepare a batch of items into a single padded tensor batch.
+    Returns (model_inputs, list_of_meta) where meta holds per-item info for parsing.
     """
-    category = item.get("category", "unknown")
-    is_good = item.get("defect_type") == "good"
-    image_path = item.get("annotated_path") or item.get("image_path")
-    location_hint = item.get("location")  # Pre-computed from mask bbox
+    texts = []
+    all_image_inputs = []
+    meta = []
 
-    # ── Good image: simple check ──────────────────────────────────────────
-    if is_good:
-        valid_defects = MVTEC_DEFECT_KNOWLEDGE.get(category, {}).get("defects", [])
-        normal_desc = MVTEC_DEFECT_KNOWLEDGE.get(category, {}).get(
-            "normal_description", "a normal component"
-        )
-        prompt_text = (
-            f"You are an industrial quality inspector analyzing a '{category}' component.\n"
-            f"Normal appearance: {normal_desc}\n"
-            f"Examine this image carefully. Does it have any defects?\n"
-            f"Possible defect types would be: {', '.join(valid_defects)}\n"
-            f"Answer in this exact format:\n"
-            f"  Defect: good\n"
-            f"  Location: none\n"
-            f"  Description: <one sentence describing what you see>\n\n"
-            f"Answer:"
-        )
-        messages = [{"role": "user", "content": [
-            {"type": "image", "image": image_path},
-            {"type": "text", "text": prompt_text},
-        ]}]
-    else:
-        # ── Defective image: full Echo-style prompt ───────────────────────
-        valid_defects = MVTEC_DEFECT_KNOWLEDGE.get(category, {}).get("defects", [])
-        prompt_text = build_cot_prompt(category, location_hint, valid_defects)
+    for item in items:
+        is_good = item.get("defect_type") == "good"
+        category = item.get("category", "unknown")
+        location_hint = item.get("location")
+        image_path = item.get("annotated_path") or item.get("image_path")
+
+        prompt_text = build_prompt(category, location_hint, is_good)
         messages = [{"role": "user", "content": [
             {"type": "image", "image": image_path},
             {"type": "text", "text": prompt_text},
         ]}]
 
-    # ── Tokenize and generate ──────────────────────────────────────────────
-    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    image_inputs, video_inputs = process_vision_info(messages)
+        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, _ = process_vision_info(messages)
+
+        texts.append(text)
+        all_image_inputs.extend(image_inputs)
+        meta.append({
+            "is_good": is_good,
+            "category": category,
+            "location_hint": location_hint,
+            "valid_defects": MVTEC_DEFECT_KNOWLEDGE.get(category, {}).get("defects", []),
+        })
+
     inputs = processor(
-        text=[text],
-        images=image_inputs,
-        videos=video_inputs,
+        text=texts,
+        images=all_image_inputs,
         padding=True,
         return_tensors="pt",
-    ).to(model.device)
+    )
+    return inputs, meta
 
-    with torch.no_grad():
-        generated_ids = model.generate(
-            **inputs,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            do_sample=temperature > 0,
-        )
-
-    generated_ids_trimmed = [
-        out_ids[len(in_ids):]
-        for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-    ]
-    output_text = processor.batch_decode(
-        generated_ids_trimmed,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
-    )[0]
-
-    # ── Parse structured output ───────────────────────────────────────────
-    parsed = parse_model_output(output_text, valid_defects, location_hint if not is_good else None)
-
-    # Update item with predictions
-    item = item.copy()
-    item["generated_text"] = output_text
-    item["predicted_defect_type"] = parsed["defect_type"] or ("good" if is_good else "unknown")
-    item["predicted_location"] = parsed["location"]
-    item["predicted_description"] = parsed["description"]
-
-    # For good images, force defect = good
-    if is_good:
-        item["predicted_defect_type"] = "good"
-        item["predicted_location"] = None
-
-    return item
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. BATCH INFERENCE
-# ─────────────────────────────────────────────────────────────────────────────
 
 def batch_inference(
     annotated_images: list[dict],
     model,
     processor,
-    batch_size: int = 4,
+    batch_size: int = 8,          
     use_location: bool = True,
-    max_tokens: int = 150,
-    temperature: float = 0.1,
+    max_tokens: int = 60,         
+    temperature: float = 0.0,
     show_progress: bool = True,
 ) -> list[dict]:
     """
-    Run improved batch inference over all images.
-    Processes one at a time (Qwen2-VL works best this way for quality).
-    batch_size param kept for API compatibility but inference is sequential.
+    Fast batched inference with true GPU parallelism.
+
+    Speedup vs original:
+      - Real batch processing (N images in one forward pass)
+      - Greedy decoding (temperature=0, no sampling overhead)
+      - Compact prompts (fewer tokens to encode)
+      - Estimated: ~5-10x faster than sequential on T4
     """
     results = []
-    iterable = tqdm(annotated_images, desc="Running Echo-style inference") if show_progress else annotated_images
+    device = next(model.parameters()).device
 
-    for item in iterable:
+    # Split into batches
+    batches = [annotated_images[i:i+batch_size] for i in range(0, len(annotated_images), batch_size)]
+    iterable = tqdm(batches, desc=f"Inference") if show_progress else batches
+
+    for batch_items in iterable:
         try:
-            result = run_single_inference(
-                item=item,
-                model=model,
-                processor=processor,
-                max_tokens=max_tokens,
-                temperature=temperature,
+            inputs, meta = _prepare_batch(batch_items, processor)
+            inputs = inputs.to(device)
+
+            with torch.no_grad():
+                generated_ids = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=False,          # greedy — fastest
+                    use_cache=True,
+                )
+
+            # Decode only the newly generated tokens (strip input)
+            input_len = inputs["input_ids"].shape[1]
+            new_ids = generated_ids[:, input_len:]
+            decoded = processor.batch_decode(
+                new_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
             )
-            results.append(result)
+
+            # Parse each output and attach back to item
+            for item, output_text, m in zip(batch_items, decoded, meta):
+                parsed = parse_model_output(
+                    output_text,
+                    m["valid_defects"],
+                    m["location_hint"] if use_location else None,
+                )
+                out = item.copy()
+                out["generated_text"] = output_text
+                out["predicted_defect_type"] = "good" if m["is_good"] else (parsed["defect_type"] or "unknown")
+                out["predicted_location"] = None if m["is_good"] else parsed["location"]
+                out["predicted_description"] = parsed["description"]
+                results.append(out)
+
+        except torch.cuda.OutOfMemoryError:
+            # Fallback: halve batch and retry
+            torch.cuda.empty_cache()
+            print(f"\nOOM with batch_size={batch_size}, retrying with batch_size={max(1, batch_size//2)}")
+            for item in batch_items:
+                try:
+                    inputs, meta = _prepare_batch([item], processor)
+                    inputs = inputs.to(device)
+                    with torch.no_grad():
+                        generated_ids = model.generate(**inputs, max_new_tokens=max_tokens, do_sample=False)
+                    input_len = inputs["input_ids"].shape[1]
+                    output_text = processor.decode(generated_ids[0, input_len:], skip_special_tokens=True)
+                    m = meta[0]
+                    parsed = parse_model_output(output_text, m["valid_defects"], m["location_hint"])
+                    out = item.copy()
+                    out["generated_text"] = output_text
+                    out["predicted_defect_type"] = "good" if m["is_good"] else (parsed["defect_type"] or "unknown")
+                    out["predicted_location"] = None if m["is_good"] else parsed["location"]
+                    out["predicted_description"] = parsed["description"]
+                    results.append(out)
+                except Exception as e2:
+                    print(f"Error on single item {item.get('image_name','?')}: {e2}")
+                    out = item.copy()
+                    out.update({"generated_text": "", "predicted_defect_type": "error",
+                                "predicted_location": None, "predicted_description": ""})
+                    results.append(out)
+
         except Exception as e:
-            print(f"\nError processing {item.get('image_name', '?')}: {e}")
-            item = item.copy()
-            item["generated_text"] = ""
-            item["predicted_defect_type"] = "error"
-            item["predicted_location"] = None
-            item["predicted_description"] = ""
-            results.append(item)
+            print(f"\nBatch error: {e}")
+            for item in batch_items:
+                out = item.copy()
+                out.update({"generated_text": "", "predicted_defect_type": "error",
+                            "predicted_location": None, "predicted_description": ""})
+                results.append(out)
 
     return results
