@@ -335,6 +335,11 @@ def evaluate_all(results: List[Dict],
         "text_quality": quality_results,
         "summary": {"num_samples": attribute_results['total_samples']}
     }
+def compute_meteor_simplified(gen_text: str, ref_text: str) -> float:
+    return 0.0 
+
+def compute_spice_simplified(gen_text: str, ref_text: str) -> float:
+    return 0.0
 if __name__ == "__main__":
     print("Testing Evaluation Module\n" + "="*50)
     
@@ -346,6 +351,7 @@ if __name__ == "__main__":
     result = evaluate_text_quality(gen, ref, use_standard=False)
     print(f"   Method: {result['method']}")
     print(f"   Metrics: {result['metrics']}")
+
 
 
 
