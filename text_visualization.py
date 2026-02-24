@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from PIL import Image
 import numpy as np
-
+import textwrap
 
 def save_generated_text(results: List[Dict], 
                         output_dir: str,
@@ -307,10 +307,9 @@ def _display_single_result(ax, result, border_color):
     
     # Text
     generated_text = result.get('generated_text', 'No text')
-    if len(generated_text) > 60:
-        generated_text = generated_text[:57] + '...'
+    wrapped_text = textwrap.fill(generated_text, width=40)
     
-    ax.set_title(f'"{generated_text}"', fontsize=9, color=border_color, weight='bold')
+    ax.set_title(f'"{wrapped_text}"', fontsize=9, color=border_color, weight='bold')
 
 
 if __name__ == "__main__":
@@ -322,5 +321,6 @@ if __name__ == "__main__":
     print("  - visualize_results()")
     print("  - visualize_by_category()")
     print("  - compare_defect_vs_normal()")
+
 
 
