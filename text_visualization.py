@@ -98,7 +98,7 @@ def load_generated_text(output_dir: str,
             with open(text_file, 'r', encoding='utf-8') as f:
                 text_dict[text_file] = f.read()
     
-    print(f"\n✓ Loaded {len(text_dict)} text descriptions from {text_dir}")
+    print(f"\n Loaded {len(text_dict)} text descriptions from {text_dir}")
     return text_dict
 
 
@@ -321,6 +321,7 @@ if __name__ == "__main__":
     print("  - visualize_results()")
     print("  - visualize_by_category()")
     print("  - compare_defect_vs_normal()")
+
 
 
 
