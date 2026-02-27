@@ -6,95 +6,20 @@ from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 
 # =============================================================================
-# MODEL REGISTRY
-# =============================================================================
-QWEN_VL_MODELS = {
-    'qwen2-vl-2b': {
-        'name': 'Qwen/Qwen2-VL-2B-Instruct',
-        'memory_gb': 4,
-        'recommended_batch_size': 4
-    },
-    'qwen2-vl-7b': {
-        'name': 'Qwen/Qwen2-VL-7B-Instruct',
-        'memory_gb': 14,
-        'recommended_batch_size': 2
-    },
-    'qwen2.5-vl-3b': {
-        'name': 'Qwen/Qwen2.5-VL-3B-Instruct',
-        'memory_gb': 6,
-        'recommended_batch_size': 4
-    },
-    'qwen2.5-vl-7b': {
-        'name': 'Qwen/Qwen2.5-VL-7B-Instruct',
-        'memory_gb': 14,
-        'recommended_batch_size': 2
-    }
-}
-DEFAULT_MODEL = 'qwen2-vl-2b'
-
-LOCATION_LABELS = [
-    "top left", "top center", "top right",
-    "center left", "center", "center right",
-    "bottom left", "bottom center", "bottom right",
-]
-
-def get_available_models() -> Dict:
-    """Get list of available models with their specifications."""
-    return QWEN_VL_MODELS.copy()
-
-
-def select_model_for_gpu(gpu_memory_gb: float = None) -> str:
-    """
-    Select appropriate model based on available GPU memory.
-
-    Args:
-        gpu_memory_gb: Available GPU memory (auto-detected if None)
-
-    Returns:
-        Model key from QWEN_VL_MODELS
-    """
-    if gpu_memory_gb is None:
-        info = get_gpu_memory_info()
-        gpu_memory_gb = info.get('free_memory_gb', 4)
-
-    # Select largest model that fits
-    suitable = []
-    for key, spec in QWEN_VL_MODELS.items():
-        if spec['memory_gb'] <= gpu_memory_gb * 0.8:  # 80% safety margin
-            suitable.append((key, spec['memory_gb']))
-
-    if suitable:
-        return max(suitable, key=lambda x: x[1])[0]
-
-    return DEFAULT_MODEL
-
-
-# =============================================================================
 # MODEL LOADING
 # =============================================================================
-def load_qwen_vl_model(model_name: str = None,
-                        model_key: str = None,
-                        device: str = "auto") -> Tuple:
+def load_qwen2_vl_model(model_name: str, device: str = "auto") -> Tuple:
     """
-    Load Qwen2-VL model optimized for T4 GPU.
+    Load Qwen2-VL model and processor.
 
     Args:
-        model_name: Full HuggingFace model name (e.g., 'Qwen/Qwen2-VL-2B-Instruct')
-        model_key: Short key from QWEN_VL_MODELS (e.g., 'qwen2-vl-2b')
+        model_name: Full HuggingFace model name or local path
         device: Device to load model ('auto', 'cuda', 'cpu')
 
     Returns:
         Tuple of (model, processor)
     """
     from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
-
-    # Resolve model name
-    if model_name is None:
-        if model_key and model_key in QWEN_VL_MODELS:
-            model_name = QWEN_VL_MODELS[model_key]['name']
-        else:
-            model_key = select_model_for_gpu()
-            model_name = QWEN_VL_MODELS[model_key]['name']
 
     print(f"Loading {model_name}...")
 
@@ -519,3 +444,4 @@ def _process_single_fallback(item: Dict,
         result['predicted_description'] = ""
 
     return result
+
