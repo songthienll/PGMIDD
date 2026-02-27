@@ -421,3 +421,156 @@ def batch_inference(
                 results.append(out)
 
     return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. DEFECT TYPE CORRECTION  (Post-inference re-generation for mismatches)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def describe_defect_single(image_path: str, model, processor,
+                           prompt: str, max_tokens: int = 80,
+                           temperature: float = 0.0) -> str:
+    """Single-image inference helper for correction step."""
+    messages = [{"role": "user", "content": [
+        {"type": "image", "image": image_path},
+        {"type": "text", "text": prompt},
+    ]}]
+
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    image_inputs, _ = process_vision_info(messages)
+    inputs = processor(
+        text=[text], images=image_inputs,
+        padding=True, return_tensors="pt"
+    ).to(next(model.parameters()).device)
+
+    with torch.no_grad():
+        generated_ids = model.generate(
+            **inputs, max_new_tokens=max_tokens,
+            do_sample=temperature > 0,
+            temperature=temperature if temperature > 0 else None,
+            use_cache=True,
+        )
+
+    input_len = inputs["input_ids"].shape[1]
+    response = processor.decode(generated_ids[0, input_len:], skip_special_tokens=True)
+    return response.strip()
+
+
+def build_correction_prompt(category: str, defect_type: str,
+                            location_hint: str = None) -> str:
+    """
+    Build a prompt that explicitly specifies the correct defect type.
+    Uses MVTEC_DEFECT_KNOWLEDGE for accurate defect descriptions.
+
+    Args:
+        category: Product category (e.g., 'cable', 'zipper')
+        defect_type: Ground truth defect type (e.g., 'missing_wire')
+        location_hint: Location hint from 3x3 grid
+
+    Returns:
+        Formatted prompt string with explicit defect type guidance
+    """
+    info = MVTEC_DEFECT_KNOWLEDGE.get(category, {})
+    defect_desc = info.get("descriptions", {}).get(defect_type, "")
+    normal_desc = info.get("normal_description", f"a normal {category}")
+
+    loc_str = (f"The defect is located at {location_hint}."
+               if location_hint else "The defect region is highlighted in red.")
+
+    desc_str = f" ({defect_desc})" if defect_desc else ""
+
+    return (
+        f"Inspect this {category}. {loc_str} "
+        f"Normal: {normal_desc}. "
+        f"The defect type is: {defect_type.replace('_', ' ')}{desc_str}. "
+        f"Reply ONLY:\n"
+        f"Defect: {defect_type}\n"
+        f"Location: {location_hint or '<location>'}\n"
+        f"Description: <one sentence describing this "
+        f"{defect_type.replace('_', ' ')} defect>"
+    )
+
+
+def correct_mismatched_defect_types(results: list[dict],
+                                     model,
+                                     processor,
+                                     max_tokens: int = 80,
+                                     temperature: float = 0.0,
+                                     show_progress: bool = True) -> tuple[list[dict], dict]:
+    """
+    Post-processing step: detect defect type mismatches and re-generate.
+
+    For each defective image where predicted_defect_type != defect_type
+    (ground truth from metadata), re-runs inference with a corrected prompt
+    that explicitly names the correct defect type.
+
+    Args:
+        results: List of result dicts from batch_inference()
+        model: Qwen2-VL model
+        processor: Model processor
+        max_tokens: Maximum tokens per response
+        temperature: Generation temperature
+        show_progress: Show progress bar
+
+    Returns:
+        Tuple of (corrected_results, correction_stats)
+    """
+    import os
+
+    # Find mismatched indices
+    mismatched = []
+    for i, r in enumerate(results):
+        gt_type = r.get('defect_type', 'good')
+        pred_type = r.get('predicted_defect_type', '')
+        if gt_type != 'good' and pred_type != gt_type:
+            mismatched.append(i)
+
+    if not mismatched:
+        print("No mismatches found! All predictions match ground truth.")
+        return results, {"total_mismatches": 0, "corrected": 0}
+
+    print(f"Found {len(mismatched)} defect type mismatches. Re-generating...")
+
+    corrected_count = 0
+    iterator = tqdm(mismatched, desc="Correcting mismatches") if show_progress else mismatched
+
+    for idx in iterator:
+        item = results[idx]
+        category = item.get('category', 'product')
+        defect_type = item.get('defect_type')
+        location_hint = item.get('location')
+        image_path = item.get('annotated_path') or item.get('image_path')
+
+        if not image_path or not os.path.exists(image_path):
+            continue
+
+        prompt = build_correction_prompt(category, defect_type, location_hint)
+        valid_defects = MVTEC_DEFECT_KNOWLEDGE.get(category, {}).get("defects", [])
+
+        try:
+            new_text = describe_defect_single(
+                image_path, model, processor, prompt, max_tokens, temperature
+            )
+            parsed = parse_model_output(new_text, valid_defects, location_hint)
+
+            # Preserve original predictions as backup
+            results[idx]['original_generated_text'] = results[idx].get('generated_text')
+            results[idx]['original_predicted_defect_type'] = results[idx].get('predicted_defect_type')
+
+            # Update with corrected prediction
+            results[idx]['generated_text'] = new_text
+            results[idx]['predicted_defect_type'] = defect_type  # force correct type
+            results[idx]['predicted_description'] = parsed['description']
+            results[idx]['was_corrected'] = True
+            corrected_count += 1
+
+        except Exception as e:
+            print(f"  Error correcting {item.get('image_name', '?')}: {e}")
+
+    stats = {
+        "total_mismatches": len(mismatched),
+        "corrected": corrected_count,
+        "correction_rate": f"{corrected_count / max(len(mismatched), 1) * 100:.1f}%"
+    }
+    print(f"\n Corrected {corrected_count}/{len(mismatched)} mismatched descriptions")
+    return results, stats
