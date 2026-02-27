@@ -4,7 +4,7 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 from qwen_vl_utils import process_vision_info
-
+z
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. DOMAIN KNOWLEDGE BASE  (Knowledge Guide module)
 #    Defect vocabulary per MVTec-AD category + defect descriptions
