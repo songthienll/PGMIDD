@@ -250,6 +250,10 @@ def compute_bleu_simplified(gen_text: str, ref_text: str, max_n: int = 4) -> flo
         # Smoothing: add 1 to avoid log(0)
         precisions.append((clipped + 1) / (total + 1))
 
+    # Guard against log(0)
+    if any(p == 0.0 for p in precisions):
+        return 0.0
+
     log_avg = sum(math.log(p) for p in precisions) / max_n
     return bp * math.exp(log_avg)
 
@@ -404,8 +408,11 @@ def _compute_standard_metrics(generated_texts: Dict[str, str],
         meteor_score, _ = meteor_scorer.compute_score(gts, res)
         results["METEOR"] = meteor_score
     except Exception as e:
-        warnings.warn(f"Error computing METEOR: {e}")
-        results["METEOR"] = None
+        warnings.warn(f"pycocoevalcap METEOR failed: {e}. Using simplified METEOR.")
+        # Fallback to simplified METEOR
+        m_scores = [compute_meteor_simplified(generated_texts[id], reference_texts[id])
+                    for id in generated_texts if id in reference_texts]
+        results["METEOR"] = sum(m_scores) / len(m_scores) if m_scores else 0.0
 
     # All other metrics use fast simplified implementations
     bleu_scores, rouge1_scores, rougel_scores, spice_scores = [], [], [], []
@@ -478,9 +485,6 @@ def evaluate_all(results: List[Dict],
     reference_texts = {}
 
     for idx, item in enumerate(results):
-        if item.get('defect_type') == 'good':
-            continue
-
         image_id = str(idx)
         generated_texts[image_id] = item.get('generated_text', '')
 
