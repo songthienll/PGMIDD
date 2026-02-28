@@ -155,8 +155,9 @@ def visualize_results(results: List[Dict],
         img = Image.open(image_path)
         img_array = np.array(img)
         
-        # Display image
-        ax.imshow(img_array)
+        # Display image (use gray colormap for grayscale images)
+        cmap = 'gray' if img_array.ndim == 2 else None
+        ax.imshow(img_array, cmap=cmap)
         ax.axis('off')
         
         # Color border based on defect type
@@ -297,7 +298,7 @@ def _display_single_result(ax, result, border_color):
     img = Image.open(image_path)
     img_array = np.array(img)
     
-    ax.imshow(img_array)
+    ax.imshow(img_array, cmap='gray' if img_array.ndim == 2 else None)
     ax.axis('off')
     
     # Border
@@ -312,6 +313,111 @@ def _display_single_result(ax, result, border_color):
     ax.set_title(f'"{wrapped_text}"', fontsize=9, color=border_color, weight='bold')
 
 
+def visualize_results_with_metrics(results,
+                                    num_samples: int = 6,
+                                    cols: int = 2,
+                                    figsize: tuple = (16, 20),
+                                    save_path: str = None,
+                                    dataset_type: str = "mvtec"):
+    """
+    Visualize images with generated text, ground truth, and per-sample metrics.
+    
+    Args:
+        results: List of result dictionaries with 'generated_text', 'category', etc.
+        num_samples: Number of samples to display
+        cols: Number of columns in grid
+        figsize: Figure size (width, height)
+        save_path: Optional path to save the visualization
+        dataset_type: 'mvtec' or 'visa'
+    """
+    from evaluation import (create_ground_truth, compute_bleu_simplified,
+                            compute_rouge_1_simplified, compute_rouge_l_simplified,
+                            compute_meteor_simplified, compute_spice_simplified)
+    import random
+
+    valid = [r for r in results if 'generated_text' in r]
+    if not valid:
+        print("No results with generated text found!")
+        return
+
+    samples = random.sample(valid, min(num_samples, len(valid)))
+    rows = (len(samples) + cols - 1) // cols
+    
+    fig, axes = plt.subplots(rows, cols, figsize=figsize)
+    if rows == 1 and cols == 1:
+        axes = np.array([[axes]])
+    elif rows == 1:
+        axes = axes.reshape(1, -1)
+    elif cols == 1:
+        axes = axes.reshape(-1, 1)
+
+    for idx, result in enumerate(samples):
+        row, col = idx // cols, idx % cols
+        ax = axes[row, col]
+
+        # Load & display image
+        image_path = result.get('annotated_path') or result.get('image_path')
+        if not image_path or not os.path.exists(image_path):
+            ax.axis('off')
+            continue
+
+        img = Image.open(image_path)
+        img_array = np.array(img)
+        ax.imshow(img_array, cmap='gray' if img_array.ndim == 2 else None)
+        ax.axis('off')
+
+        # Border color
+        is_defect = result.get('defect_type', 'good') != 'good'
+        border_color = 'red' if is_defect else 'green'
+        rect = Rectangle((0, 0), img_array.shape[1], img_array.shape[0],
+                         linewidth=3, edgecolor=border_color, facecolor='none')
+        ax.add_patch(rect)
+
+        # Compute per-sample metrics
+        category = result.get('category', 'product')
+        defect_type = result.get('defect_type', 'good')
+        location = result.get('location')
+        gen_text = result.get('generated_text', '')
+        ref_text = create_ground_truth(category, defect_type, location,
+                                       dataset_type=dataset_type)
+
+        bleu = compute_bleu_simplified(gen_text, ref_text)
+        rouge1 = compute_rouge_1_simplified(gen_text, ref_text)
+        rougel = compute_rouge_l_simplified(gen_text, ref_text)
+        meteor = compute_meteor_simplified(gen_text, ref_text)
+        spice = compute_spice_simplified(gen_text, ref_text)
+
+        # Build title
+        meta_line = f"{category} | {defect_type}"
+        if location and is_defect:
+            meta_line += f" | {location}"
+
+        gen_wrapped = textwrap.fill(gen_text[:120], width=50)
+        ref_wrapped = textwrap.fill(ref_text[:120], width=50)
+
+        metrics_line = (f"BLEU-4={bleu:.3f}  ROUGE-1={rouge1:.3f}  "
+                       f"ROUGE-L={rougel:.3f}  METEOR={meteor:.3f}  SPICE={spice:.3f}")
+
+        title = (f"{meta_line}\n"
+                f"Gen: \"{gen_wrapped}\"\n"
+                f"Ref: \"{ref_wrapped}\"\n"
+                f"{metrics_line}")
+
+        ax.set_title(title, fontsize=8, pad=10, color=border_color,
+                    weight='bold', ha='center')
+
+    # Hide empty subplots
+    for idx in range(len(samples), rows * cols):
+        axes[idx // cols, idx % cols].axis('off')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Saved to {save_path}")
+
+    plt.show()
+
 if __name__ == "__main__":
     print("Text Visualization Module")
     print("="*50)
@@ -321,7 +427,4 @@ if __name__ == "__main__":
     print("  - visualize_results()")
     print("  - visualize_by_category()")
     print("  - compare_defect_vs_normal()")
-
-
-
-
+    print("  - visualize_results_with_metrics()")
