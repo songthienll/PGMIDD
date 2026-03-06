@@ -397,7 +397,8 @@ inputs = {k: v.to(model_dtype) if v.dtype == torch.float32 else v
             temperature=temperature,
             do_sample=temperature > 0,
             top_p=0.9 if temperature > 0 else None,
-            pad_token_id=processor.tokenizer.pad_token_id
+            pad_token_id=processor.tokenizer.pad_token_id,
+            cache_implementation=None,
         )
 
     # Decode responses (strip input tokens)
@@ -598,4 +599,5 @@ def correct_mismatched_defect_types(results: List[Dict],
     }
     print(f"\n Corrected {corrected_count}/{len(mismatched)} mismatched descriptions")
     return results, stats
+
 
