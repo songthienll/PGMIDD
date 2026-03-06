@@ -192,7 +192,14 @@ def describe_defect(image_path: str,
         padding=True,
         return_tensors="pt"
     ).to(model.device)
-
+                        
+    # Cast inputs to dtype's model
+    model_dtype = next(p for p in model.parameters() if p.dtype != torch.uint8).dtype
+    inputs = {
+        k: v.to(model_dtype) if v.dtype == torch.float32 else v
+        for k, v in inputs.items()
+    }
+                        
     with torch.no_grad():
         generated_ids = model.generate(
             **inputs,
@@ -376,6 +383,11 @@ def _process_batch(batch: List[Dict],
         padding=True,
         return_tensors="pt"
     ).to(model.device)
+
+# Cast inputs to dtype's model
+model_dtype = next(p for p in model.parameters() if p.dtype != torch.uint8).dtype
+inputs = {k: v.to(model_dtype) if v.dtype == torch.float32 else v
+          for k, v in inputs.items()}
 
     # Batch generation
     with torch.no_grad():
@@ -586,3 +598,4 @@ def correct_mismatched_defect_types(results: List[Dict],
     }
     print(f"\n Corrected {corrected_count}/{len(mismatched)} mismatched descriptions")
     return results, stats
+
