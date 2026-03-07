@@ -211,7 +211,7 @@ def describe_defect(image_path: str,
 
     generated_ids_trimmed = [
         out_ids[len(in_ids):]
-        for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
     ]
     response = processor.batch_decode(
         generated_ids_trimmed,
@@ -599,5 +599,6 @@ def correct_mismatched_defect_types(results: List[Dict],
     }
     print(f"\n Corrected {corrected_count}/{len(mismatched)} mismatched descriptions")
     return results, stats
+
 
 
