@@ -192,27 +192,28 @@ def create_ground_truth(category: str,
                         location: str = None,
                         defect_size: str = None,
                         dataset_type: str = "mvtec") -> str:
-    """Create ground truth text using hybrid approach."""
     ground_truth_dict = MVTEC_GROUND_TRUTH if dataset_type == "mvtec" else VISA_GROUND_TRUTH
 
     if category in ground_truth_dict and defect_type in ground_truth_dict[category]:
         base_text = ground_truth_dict[category][defect_type]
-
         if location and defect_type != 'good':
             location_clean = location.lower().replace(' region', '').strip()
             base_text += f" The defect is located at the {location_clean} region."
-
         return base_text
 
-    # Fallback for unknown category/defect
+    # Fallback
     defect_clean = defect_type.replace('_', ' ')
-    parts = [f"A {category} with {defect_clean} defect"]
+    category_clean = category.replace('_', ' ')
 
+    if defect_type == 'good':
+        return f"A {category_clean} with no visible defects. The surface is uniform and intact."
+
+    # Defective fallback
+    parts = [f"A {category_clean} with {defect_clean} defect visible on surface"]
     if location:
-        parts.append(f"at the {location} region")
-
-    return ' '.join(parts)
-
+        location_clean = location.lower().replace(' region', '').strip()
+        parts.append(f"The defect is located at the {location_clean} region")
+    return '. '.join(parts) + '.'
 
 # =============================================================================
 # SIMPLIFIED METRIC IMPLEMENTATIONS
@@ -501,3 +502,4 @@ def evaluate_all(results: List[Dict],
         "text_quality": quality_results,
         "summary": {"num_samples": len(generated_texts)},
     }
+
