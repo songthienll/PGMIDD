@@ -9,7 +9,6 @@ import math
 import warnings
 from typing import List, Dict, Tuple, Set, Optional
 from collections import Counter
-x
 
 MVTEC_GROUND_TRUTH = {
     "bottle": {
@@ -502,6 +501,7 @@ def evaluate_all(results: List[Dict],
         "text_quality": quality_results,
         "summary": {"num_samples": len(generated_texts)},
     }
+
 
 
 
