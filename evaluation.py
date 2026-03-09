@@ -206,7 +206,7 @@ def create_ground_truth(category: str,
     category_clean = category.replace('_', ' ')
 
     if defect_type == 'good':
-        return f"A {category_clean} with no visible defects. The surface is uniform and intact."
+        return f"A {category_clean} with no visible defects."
 
     # Defective fallback
     parts = [f"A {category_clean} with {defect_clean} defect visible on surface"]
@@ -502,4 +502,5 @@ def evaluate_all(results: List[Dict],
         "text_quality": quality_results,
         "summary": {"num_samples": len(generated_texts)},
     }
+
 
