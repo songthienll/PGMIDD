@@ -6,6 +6,7 @@ import os
 import cv2
 import numpy as np
 from typing import Tuple, Optional
+
 def draw_defect_contour(image: np.ndarray,
                          mask: np.ndarray,
                          color: Tuple[int, int, int] = (0, 0, 255),
@@ -42,40 +43,14 @@ def draw_defect_contour(image: np.ndarray,
     cv2.drawContours(annotated, contours, -1, color, thickness)
     
     return annotated
-def draw_bbox(image: np.ndarray,
-              bbox: Tuple[int, int, int, int],
-              color: Tuple[int, int, int] = (0, 255, 0),
-              thickness: int = 2,
-              label: str = None) -> np.ndarray:
-    """
-    Draw bounding box on image.
-    
-    Args:
-        image: BGR image
-        bbox: (x1, y1, x2, y2) in absolute pixels
-        color: Box color in BGR
-        thickness: Line thickness
-        label: Optional text label
-        
-    Returns:
-        Annotated image
-    """
+                           
+def draw_bboxes(image, bboxes):
+    """ Bboxes: list of [x1,y1,x2,y2]."""
     annotated = image.copy()
-    x1, y1, x2, y2 = [int(c) for c in bbox]
-    
-    cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
-    
-    if label:
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.6
-        font_thickness = 1
-        
-        (text_w, text_h), _ = cv2.getTextSize(label, font, font_scale, font_thickness)
-        
-        cv2.rectangle(annotated, (x1, y1 - text_h - 10), (x1 + text_w + 10, y1), color, -1)
-        cv2.putText(annotated, label, (x1 + 5, y1 - 5), font, font_scale, (255, 255, 255), font_thickness)
-    
+    for (x1, y1, x2, y2) in bboxes:
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), BBOX_COLOR, BBOX_THICKNESS)
     return annotated
+  
 def create_annotated_image(image_path: str,
                             mask_path: str,
                             output_path: str = None,
@@ -199,3 +174,4 @@ if __name__ == "__main__":
     print(f"Output shape: {annotated.shape}")
 
     print("Visual prompting test complete!")
+
