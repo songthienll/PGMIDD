@@ -1,9 +1,3 @@
-"""
-Evaluation Module for Defect Detection
-Two-tier evaluation system:
-- Tier 1: Attribute-level factual accuracy (automatic)
-- Tier 2: Text quality metrics (official pycocoevalcap)
-"""
 import re
 import math
 import warnings
@@ -501,6 +495,7 @@ def evaluate_all(results: List[Dict],
         "text_quality": quality_results,
         "summary": {"num_samples": len(generated_texts)},
     }
+
 
 
 
