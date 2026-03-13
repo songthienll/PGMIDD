@@ -104,6 +104,52 @@ def load_mvtec_dataset(root_path: str,
                         })
     
     return dataset
+
+def load_visa_dataset(base_dir):
+    data = []
+
+    for category in sorted(os.listdir(base_dir)):
+        cat_path    = os.path.join(base_dir, category)
+        normal_dir  = os.path.join(cat_path, "Data", "Images", "Normal")
+        anomaly_dir = os.path.join(cat_path, "Data", "Images", "Anomaly")
+        mask_dir    = os.path.join(cat_path, "Data", "Masks",  "Anomaly")
+
+        if not os.path.isdir(cat_path):
+            continue
+
+        # Normal images
+        if os.path.isdir(normal_dir):
+            for fname in os.listdir(normal_dir):
+                if not fname.lower().endswith((".png", ".jpg", ".jpeg")):
+                    continue
+                data.append({
+                    "image_path"    : os.path.join(normal_dir, fname),
+                    "mask_path"     : None,
+                    "category"      : category,
+                    "defect_type"   : "good",
+                    "image_name"    : os.path.splitext(fname)[0],
+                    "is_good"       : True,
+                    "dataset_source": "visa",
+                })
+
+        # Anomaly images
+        if os.path.isdir(anomaly_dir):
+            for fname in os.listdir(anomaly_dir):
+                if not fname.lower().endswith((".png", ".jpg", ".jpeg")):
+                    continue
+                stem      = os.path.splitext(fname)[0]
+                mask_path = os.path.join(mask_dir, stem + ".png")
+                data.append({
+                    "image_path"    : os.path.join(anomaly_dir, fname),
+                    "mask_path"     : mask_path if os.path.exists(mask_path) else None,
+                    "category"      : category,
+                    "defect_type"   : "anomaly",
+                    "image_name"    : stem,
+                    "is_good"       : False,
+                    "dataset_source": "visa",
+                })
+    return data
+    
 # =============================================================================
 # BBOX EXTRACTION AND PROCESSING
 # =============================================================================
@@ -402,3 +448,4 @@ if __name__ == "__main__":
     for bbox in [(50, 50, 150, 150), (400, 300, 600, 500), (800, 600, 950, 750)]:
         loc = bbox_to_location(bbox, (1024, 768))
         print(f"   Bbox {bbox} -> {loc}")
+
