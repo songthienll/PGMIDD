@@ -1,0 +1,502 @@
+import re
+import math
+import warnings
+from typing import List, Dict, Tuple, Set, Optional
+from collections import Counter
+
+MVTEC_GROUND_TRUTH = {
+    "bottle": {
+        "good": "A clean glass bottle with no visible defects.",
+        "broken_large": "A glass bottle with a large fracture or significant structural damage visible on the body.",
+        "broken_small": "A glass bottle with a small crack or chip visible on the surface.",
+        "contamination": "A glass bottle with contamination defect showing foreign particles or debris on the surface."
+    },
+    "cable": {
+        "good": "A normal industrial cable with no visible defects.",
+        "bent_wire": "An industrial cable with bent wire showing deformation in the conductor.",
+        "cable_swap": "An industrial cable with incorrect wire positioning or swapped conductors.",
+        "combined": "An industrial cable with multiple combined defects visible.",
+        "cut_inner_insulation": "An industrial cable with cut inner insulation exposing the wire.",
+        "cut_outer_insulation": "An industrial cable with cut outer insulation showing damage.",
+        "missing_cable": "An industrial cable with a missing conductor or component.",
+        "missing_wire": "An industrial cable with missing wire in the assembly.",
+        "poke_insulation": "An industrial cable with poked insulation showing puncture damage."
+    },
+    "capsule": {
+        "good": "A normal pharmaceutical capsule with no visible defects.",
+        "crack": "A pharmaceutical capsule with crack defect showing structural damage.",
+        "faulty_imprint": "A pharmaceutical capsule with faulty or missing imprint.",
+        "poke": "A pharmaceutical capsule with poke damage or puncture.",
+        "scratch": "A pharmaceutical capsule with scratch marks on the surface.",
+        "squeeze": "A pharmaceutical capsule with squeeze deformation."
+    },
+    "carpet": {
+        "good": "A normal carpet with no visible defects.",
+        "color": "A carpet with color defect showing incorrect or uneven coloring.",
+        "cut": "A carpet with cut damage showing torn fibers.",
+        "hole": "A carpet with hole defect showing missing material.",
+        "metal_contamination": "A carpet with metal contamination embedded in fibers.",
+        "thread": "A carpet with thread defect showing loose or pulled threads."
+    },
+    "grid": {
+        "good": "A normal metal grid with no visible defects.",
+        "bent": "A metal grid with bent structure showing deformation.",
+        "broken": "A metal grid with broken wires or damaged structure.",
+        "glue": "A metal grid with glue residue or contamination.",
+        "metal_contamination": "A metal grid with metal contamination or foreign particles.",
+        "thread": "A metal grid with thread or fiber contamination."
+    },
+    "hazelnut": {
+        "good": "A normal hazelnut with no visible defects.",
+        "crack": "A hazelnut with crack defect showing shell damage.",
+        "cut": "A hazelnut with cut marks on the shell.",
+        "hole": "A hazelnut with hole defect indicating pest damage.",
+        "print": "A hazelnut with print or marking defect."
+    },
+    "leather": {
+        "good": "A normal leather surface with no visible defects.",
+        "color": "A leather surface with color defect showing discoloration.",
+        "cut": "A leather surface with cut damage showing torn material.",
+        "fold": "A leather surface with fold marks or creases.",
+        "glue": "A leather surface with visible glue residue.",
+        "poke": "A leather surface with poke marks or punctures."
+    },
+    "metal_nut": {
+        "good": "A normal metal nut with no visible defects.",
+        "bent": "A metal nut with bent structure showing deformation.",
+        "color": "A metal nut with color defect or discoloration.",
+        "flip": "A metal nut incorrectly flipped or oriented.",
+        "scratch": "A metal nut with scratch marks on the surface."
+    },
+    "pill": {
+        "good": "A normal pharmaceutical pill with no visible defects.",
+        "color": "A pharmaceutical pill with color defect or discoloration.",
+        "combined": "A pharmaceutical pill with multiple combined defects.",
+        "contamination": "A pharmaceutical pill with contamination on surface.",
+        "crack": "A pharmaceutical pill with crack in the coating.",
+        "faulty_imprint": "A pharmaceutical pill with faulty or missing imprint.",
+        "pill_type": "A pharmaceutical pill with incorrect pill type.",
+        "scratch": "A pharmaceutical pill with scratch marks."
+    },
+    "screw": {
+        "good": "A normal screw with no visible defects.",
+        "manipulated_front": "A screw with manipulated front showing damage to head.",
+        "scratch_head": "A screw with scratched head surface.",
+        "scratch_neck": "A screw with scratched neck area.",
+        "thread_side": "A screw with damaged thread on side.",
+        "thread_top": "A screw with damaged thread at top."
+    },
+    "tile": {
+        "good": "A normal tile with no visible defects.",
+        "crack": "A tile with crack defect showing surface damage.",
+        "glue_strip": "A tile with visible glue strip residue.",
+        "gray_stroke": "A tile with gray stroke mark or discoloration.",
+        "oil": "A tile with oil stain or contamination.",
+        "rough": "A tile with rough surface texture defect."
+    },
+    "toothbrush": {
+        "good": "A normal toothbrush with no visible defects.",
+        "defective": "A toothbrush with manufacturing defect in bristles or handle."
+    },
+    "transistor": {
+        "good": "A normal transistor with no visible defects.",
+        "bent_lead": "A transistor with bent lead pins.",
+        "cut_lead": "A transistor with cut or missing lead pins.",
+        "damaged_case": "A transistor with damaged plastic case.",
+        "misplaced": "A transistor with misplaced or incorrectly positioned component."
+    },
+    "wood": {
+        "good": "A normal wood surface with no visible defects.",
+        "color": "A wood surface with color defect or staining.",
+        "combined": "A wood surface with multiple combined defects.",
+        "hole": "A wood surface with hole or knot defect.",
+        "liquid": "A wood surface with liquid stain or water damage.",
+        "scratch": "A wood surface with scratch marks."
+    },
+    "zipper": {
+        "good": "A normal zipper with no visible defects.",
+        "broken_teeth": "A zipper with broken teeth showing damage.",
+        "combined": "A zipper with multiple combined defects.",
+        "fabric_border": "A zipper with fabric border defect.",
+        "fabric_interior": "A zipper with fabric interior damage.",
+        "rough": "A zipper with rough texture or irregular teeth.",
+        "split_teeth": "A zipper with split or separated teeth.",
+        "squeezed_teeth": "A zipper with squeezed or compressed teeth."
+    }
+}
+
+VISA_GROUND_TRUTH = {
+    "candle": {
+        "good": "A normal decorative candle with no visible defects.",
+        "anomaly": "A decorative candle with manufacturing defect visible on surface."
+    },
+    "capsules": {
+        "good": "A normal pharmaceutical capsule with no visible defects.",
+        "anomaly": "A pharmaceutical capsule with visible defect or damage."
+    },
+    "cashew": {
+        "good": "A normal cashew nut with no visible defects.",
+        "anomaly": "A cashew nut with visible defect such as burn or damage."
+    },
+    "chewinggum": {
+        "good": "A normal piece of chewing gum with no visible defects.",
+        "anomaly": "A piece of chewing gum with manufacturing defect."
+    },
+    "fryum": {
+        "good": "A normal fryum snack with no visible defects.",
+        "anomaly": "A fryum snack with visible defect or damage."
+    },
+    "macaroni1": {
+        "good": "A normal macaroni pasta piece with no visible defects.",
+        "anomaly": "A macaroni pasta piece with visible defect."
+    },
+    "macaroni2": {
+        "good": "A normal macaroni pasta piece with no visible defects.",
+        "anomaly": "A macaroni pasta piece with visible defect."
+    },
+    "pcb1": {
+        "good": "A normal PCB board with no visible defects.",
+        "anomaly": "A PCB board with visible defect such as missing component or solder issue."
+    },
+    "pcb2": {
+        "good": "A normal PCB board with no visible defects.",
+        "anomaly": "A PCB board with visible defect such as missing component or solder issue."
+    },
+    "pcb3": {
+        "good": "A normal PCB board with no visible defects.",
+        "anomaly": "A PCB board with visible defect such as missing component or solder issue."
+    },
+    "pcb4": {
+        "good": "A normal PCB board with no visible defects.",
+        "anomaly": "A PCB board with visible defect such as missing component or solder issue."
+    },
+    "pipe_fryum": {
+        "good": "A normal pipe fryum snack with no visible defects.",
+        "anomaly": "A pipe fryum snack with visible defect or damage."
+    }
+}
+
+
+# =============================================================================
+# GROUND TRUTH CREATION
+# =============================================================================
+def create_ground_truth(category: str,
+                        defect_type: str,
+                        location: str = None,
+                        defect_size: str = None,
+                        dataset_type: str = "mvtec") -> str:
+    ground_truth_dict = MVTEC_GROUND_TRUTH if dataset_type == "mvtec" else VISA_GROUND_TRUTH
+
+    if category in ground_truth_dict and defect_type in ground_truth_dict[category]:
+        base_text = ground_truth_dict[category][defect_type]
+        if location and defect_type != 'good':
+            location_clean = location.lower().replace(' region', '').strip()
+            base_text += f" The defect is located at the {location_clean} region."
+        return base_text
+
+    # Fallback
+    defect_clean = defect_type.replace('_', ' ')
+    category_clean = category.replace('_', ' ')
+
+    if defect_type == 'good':
+        return f"A {category_clean} with no visible defects."
+
+    # Defective fallback
+    parts = [f"A {category_clean} with {defect_clean} defect visible on surface"]
+    if location:
+        location_clean = location.lower().replace(' region', '').strip()
+        parts.append(f"The defect is located at the {location_clean} region")
+    return '. '.join(parts) + '.'
+
+# =============================================================================
+# SIMPLIFIED METRIC IMPLEMENTATIONS
+# =============================================================================
+def compute_bleu_simplified(gen_text: str, ref_text: str, max_n: int = 4) -> float:
+    """
+    Compute corpus-level BLEU score (up to max_n-grams) without external libraries.
+    Uses smoothing method 1 (add 1 to numerator and denominator for zero counts).
+    """
+    def get_ngrams(tokens: List[str], n: int) -> Counter:
+        return Counter(tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1))
+
+    gen_tokens = gen_text.lower().split()
+    ref_tokens = ref_text.lower().split()
+
+    if not gen_tokens:
+        return 0.0
+
+    # Brevity penalty
+    bp = 1.0 if len(gen_tokens) >= len(ref_tokens) else math.exp(1 - len(ref_tokens) / len(gen_tokens))
+
+    precisions = []
+    for n in range(1, max_n + 1):
+        gen_ngrams = get_ngrams(gen_tokens, n)
+        ref_ngrams = get_ngrams(ref_tokens, n)
+
+        if not gen_ngrams:
+            precisions.append(0.0)
+            continue
+
+        # Clipped count
+        clipped = sum(min(count, ref_ngrams[gram]) for gram, count in gen_ngrams.items())
+        total = sum(gen_ngrams.values())
+
+        # Smoothing: add 1 to avoid log(0)
+        precisions.append((clipped + 1) / (total + 1))
+
+    # Guard against log(0)
+    if any(p == 0.0 for p in precisions):
+        return 0.0
+
+    log_avg = sum(math.log(p) for p in precisions) / max_n
+    return bp * math.exp(log_avg)
+
+
+def compute_rouge_l_simplified(gen_text: str, ref_text: str) -> float:
+    """
+    Compute ROUGE-L (LCS-based F1) without external libraries.
+    """
+    gen_tokens = gen_text.lower().split()
+    ref_tokens = ref_text.lower().split()
+
+    if not gen_tokens or not ref_tokens:
+        return 0.0
+
+    m, n = len(ref_tokens), len(gen_tokens)
+
+    # Build LCS table
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if ref_tokens[i - 1] == gen_tokens[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
+    lcs = dp[m][n]
+    precision = lcs / n if n else 0.0
+    recall = lcs / m if m else 0.0
+
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def compute_rouge_1_simplified(gen_text: str, ref_text: str) -> float:
+    """Compute ROUGE-1 (unigram) F1 without external libraries."""
+    gen_tokens = set(gen_text.lower().split())
+    ref_tokens = set(ref_text.lower().split())
+
+    if not gen_tokens or not ref_tokens:
+        return 0.0
+
+    overlap = len(gen_tokens & ref_tokens)
+    precision = overlap / len(gen_tokens)
+    recall = overlap / len(ref_tokens)
+
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def compute_meteor_simplified(gen_text: str, ref_text: str) -> float:
+    """Simplified METEOR approximation (unigram F-mean with recall weighted higher)."""
+    gen_tokens = gen_text.lower().split()
+    ref_tokens = ref_text.lower().split()
+
+    if not gen_tokens or not ref_tokens:
+        return 0.0
+
+    gen_counter = Counter(gen_tokens)
+    ref_counter = Counter(ref_tokens)
+
+    matches = sum((gen_counter & ref_counter).values())
+    precision = matches / len(gen_tokens) if gen_tokens else 0.0
+    recall = matches / len(ref_tokens) if ref_tokens else 0.0
+
+    if precision + recall == 0:
+        return 0.0
+    # METEOR weights recall 9x more than precision
+    return (10 * precision * recall) / (recall + 9 * precision)
+
+
+def compute_spice_simplified(gen_text: str, ref_text: str) -> float:
+    """
+    Simplified SPICE approximation via named-entity / noun-phrase overlap.
+    Extracts meaningful content words (non-stopwords) and computes F1.
+    """
+    STOPWORDS = {
+        'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'shall', 'can', 'of', 'in', 'on', 'at',
+        'to', 'for', 'with', 'by', 'from', 'and', 'or', 'but', 'not', 'no',
+        'its', 'it', 'this', 'that', 'these', 'those', 'there', 'their',
+        'visible', 'showing', 'such', 'some', 'any', 'all',
+    }
+
+    def extract_content(text: str) -> Set[str]:
+        tokens = re.findall(r'\b[a-z]+\b', text.lower())
+        return {t for t in tokens if t not in STOPWORDS}
+
+    gen_words = extract_content(gen_text)
+    ref_words = extract_content(ref_text)
+
+    if not gen_words or not ref_words:
+        return 0.0
+
+    overlap = len(gen_words & ref_words)
+    precision = overlap / len(gen_words)
+    recall = overlap / len(ref_words)
+
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+# =============================================================================
+# METRIC EVALUATION
+# =============================================================================
+def evaluate_text_quality(generated_texts: Dict[str, str],
+                          reference_texts: Dict[str, str],
+                          use_standard: bool = True) -> Dict:
+    """
+    Evaluate generated text quality using official metrics.
+
+    Args:
+        generated_texts: Dict[image_id, generated_text]
+        reference_texts: Dict[image_id, reference_text]
+        use_standard: Use pycocoevalcap (True) or simplified (False)
+
+    Returns:
+        Dict with metrics and comparability flag
+    """
+    if use_standard:
+        try:
+            return _compute_standard_metrics(generated_texts, reference_texts)
+        except ImportError as e:
+            warnings.warn(f"pycocoevalcap not available: {e}. Using simplified metrics.")
+            use_standard = False
+
+    if not use_standard:
+        results = _compute_simplified_metrics(generated_texts, reference_texts)
+        return {
+            "method": "simplified (no external dependencies)",
+            "metrics": results,
+            "warning": "Install pycocoevalcap for accurate comparison with published results: pip install pycocoevalcap",
+        }
+
+
+def _compute_standard_metrics(generated_texts: Dict[str, str],
+                               reference_texts: Dict[str, str]) -> Dict:
+    """Compute METEOR (official) + BLEU/ROUGE/SPICE (simplified)."""
+    from pycocoevalcap.meteor.meteor import Meteor
+
+    # Format data for pycocoevalcap
+    gts = {id: [text] for id, text in reference_texts.items()}
+    res = {id: [text] for id, text in generated_texts.items()}
+
+    results = {}
+
+    try:
+        meteor_scorer = Meteor()
+        meteor_score, _ = meteor_scorer.compute_score(gts, res)
+        results["METEOR"] = meteor_score
+    except Exception as e:
+        warnings.warn(f"pycocoevalcap METEOR failed: {e}. Using simplified METEOR.")
+        # Fallback to simplified METEOR
+        m_scores = [compute_meteor_simplified(generated_texts[id], reference_texts[id])
+                    for id in generated_texts if id in reference_texts]
+        results["METEOR"] = sum(m_scores) / len(m_scores) if m_scores else 0.0
+
+    # All other metrics use fast simplified implementations
+    bleu_scores, rouge1_scores, rougel_scores, spice_scores = [], [], [], []
+    for id, gen_text in generated_texts.items():
+        ref_text = reference_texts.get(id, '')
+        if ref_text:
+            bleu_scores.append(compute_bleu_simplified(gen_text, ref_text))
+            rouge1_scores.append(compute_rouge_1_simplified(gen_text, ref_text))
+            rougel_scores.append(compute_rouge_l_simplified(gen_text, ref_text))
+            spice_scores.append(compute_spice_simplified(gen_text, ref_text))
+
+    def avg(lst): return sum(lst) / len(lst) if lst else 0.0
+    results["BLEU-4"]  = avg(bleu_scores)
+    results["ROUGE-1"] = avg(rouge1_scores)
+    results["ROUGE-L"] = avg(rougel_scores)
+    results["SPICE"]   = avg(spice_scores)
+
+    return {
+        "method": "pycocoevalcap METEOR + simplified BLEU/ROUGE/SPICE",
+        "metrics": results,
+    }
+
+
+def _compute_simplified_metrics(generated_texts: Dict[str, str],
+                                 reference_texts: Dict[str, str]) -> Dict:
+    """Compute all metrics using simplified implementations."""
+    meteor_scores, spice_scores = [], []
+    bleu_scores, rouge1_scores, rougel_scores = [], [], []
+
+    for id, gen_text in generated_texts.items():
+        ref_text = reference_texts.get(id, '')
+        if ref_text:
+            meteor_scores.append(compute_meteor_simplified(gen_text, ref_text))
+            spice_scores.append(compute_spice_simplified(gen_text, ref_text))
+            bleu_scores.append(compute_bleu_simplified(gen_text, ref_text))
+            rouge1_scores.append(compute_rouge_1_simplified(gen_text, ref_text))
+            rougel_scores.append(compute_rouge_l_simplified(gen_text, ref_text))
+
+    def avg(lst): return sum(lst) / len(lst) if lst else 0.0
+
+    return {
+        "BLEU-4":  avg(bleu_scores),
+        "ROUGE-1": avg(rouge1_scores),
+        "ROUGE-L": avg(rougel_scores),
+        "METEOR":  avg(meteor_scores),
+        "SPICE":   avg(spice_scores),
+    }
+
+
+# =============================================================================
+# COMBINED EVALUATION
+# =============================================================================
+def evaluate_all(results: List[Dict],
+                 use_location: bool = True,
+                 use_standard_metrics: bool = True,
+                 verbose: bool = False) -> Dict:
+    """
+    Complete evaluation with both attribute and text quality metrics.
+
+    Args:
+        results: List of dicts with generated_text, category, defect_type, location
+        use_location: Include location in ground truth
+        use_standard_metrics: Use pycocoevalcap (True) or simplified (False)
+        verbose: Print detailed mismatch information
+
+    Returns:
+        Dict with all evaluation results
+    """
+    generated_texts = {}
+    reference_texts = {}
+
+    for idx, item in enumerate(results):
+        image_id = str(idx)
+        generated_texts[image_id] = item.get('generated_text', '')
+
+        location = item.get('location') if use_location else None
+        reference_texts[image_id] = create_ground_truth(
+            item.get('category', 'product'),
+            item.get('defect_type', 'defect'),
+            location,
+        )
+
+    quality_results = evaluate_text_quality(generated_texts, reference_texts, use_standard_metrics)
+
+    return {
+        "text_quality": quality_results,
+        "summary": {"num_samples": len(generated_texts)},
+    }
+
+
+
+
+
