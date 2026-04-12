@@ -1,0 +1,48 @@
+# Model weights
+*.pth
+*.safetensors
+*.pt
+*.ckpt
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Local dev files
+cell_dumps.txt
+download.png
+project_context.md
+gdino_lora16_rank8_merged.pth
+
+# Internal folders
+debug/
+plans/
+docs/
+results/
+deploy/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+
+# Environment
+.env
+.env.local
+venv/
+.venv/
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
