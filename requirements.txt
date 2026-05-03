@@ -8,4 +8,21 @@ pycocoevalcap
 Pillow>=9.0.0
 tqdm>=4.65.0
 
+# Detection (RT-DETR, YOLOv11, YOLOv26)
+ultralytics>=8.3.0
+supervision>=0.22.0
+
+# VLM fine-tuning (Qwen2.5-VL QLoRA)
+peft>=0.13.0
+bitsandbytes>=0.43.0
+datasets>=2.20.0
+trl>=0.11.0
+
+# Demo UI
+gradio>=4.0.0
+
+# Evaluation metrics
+nltk>=3.8.0
+rouge-score>=0.1.2
+
 
