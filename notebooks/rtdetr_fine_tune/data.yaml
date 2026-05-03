@@ -1,0 +1,10 @@
+# YOLO Dataset — MVTec AD + VisA
+# Override `path:` with your actual OUTPUT_DIR/yolo_data before training
+path: REPLACE_WITH_OUTPUT_DIR/results/RE-DETR/yolo_data
+train: images/train
+val:   images/val
+test:  images/test
+
+nc: 1
+names:
+  0: defect
