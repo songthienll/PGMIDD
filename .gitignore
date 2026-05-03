@@ -25,7 +25,31 @@ debug/
 plans/
 docs/
 results/
+results_re_detr/
 deploy/
+slide/
+img_test_demo/
+
+# Local AI tool configs
+.opencode/
+.repomixignore
+AGENTS.md
+CLAUDE.md
+
+# Local scratch / personal docs
+*.pdf
+Template_AIP491_CP_StudentsGuide.md
+c.md
+demo_rtdetr_functions.txt
+fix_refs.py
+read_pdf.py
+release-manifest.json
+settings.json
+model_comparisons.png
+
+# Windows duplicate copies
+* (2).ipynb
+* (2).py
 
 # OS files
 .DS_Store
