@@ -10,7 +10,7 @@ Industrial product defect detection using:
 
 RT-DETR (recommended):
 ```bash
-python notebooks/demo_redetr/gradio_demo.py --port 7860 --share
+python notebooks/demo/gradio_demo.py --port 7860 --share
 ```
 
 YOLOv11:
@@ -63,7 +63,7 @@ python src/yolo_dataset_converter.py \
 notebooks/
 ├── defect_detection_pipeline.ipynb              # Qwen evaluation (BLEU/ROUGE/METEOR)
 ├── finetune-qwen2-5vl-mvtec-visa-qlora.ipynb    # Qwen QLoRA fine-tune
-├── demo_redetr/                                 # RT-DETR Gradio demo
+├── demo/                                        # RT-DETR Gradio demo (AIP491_demo.ipynb)
 ├── demo_yolo11/                                 # YOLOv11 Gradio demo
 └── rtdetr_fine_tune/                            # RT-DETR + YOLOv26 fine-tune
 src/
