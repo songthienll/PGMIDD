@@ -31,6 +31,26 @@ QWEN_DISABLED  = os.environ.get("QWEN_DISABLED", "0") == "1"
 warnings.filterwarnings("ignore")
 
 # ─────────────────────────────────────────────────────────────────
+# LOCATION HELPER (3x3 grid mapping from bbox center)
+# Replaces Qwen VL's spatial reasoning with deterministic rule-based mapping.
+# VLMs have known weakness in spatial grounding — bbox coords are reliable.
+# ─────────────────────────────────────────────────────────────────
+def compute_location_from_bbox(bbox, img_w: int, img_h: int) -> str:
+    """Map bbox center to 3x3 grid: top/center/bottom × left/center/right."""
+    cx = ((bbox[0] + bbox[2]) / 2.0) / img_w
+    cy = ((bbox[1] + bbox[3]) / 2.0) / img_h
+    vert  = "top"  if cy < 0.33 else "bottom" if cy > 0.67 else "center"
+    horiz = "left" if cx < 0.33 else "right"  if cx > 0.67 else "center"
+    if vert == "center" and horiz == "center":
+        return "center"
+    if vert == "center":
+        return horiz                # "left" / "right"
+    if horiz == "center":
+        return vert                 # "top"  / "bottom"
+    return f"{vert}-{horiz}"        # "top-left", "bottom-right", ...
+
+
+# ─────────────────────────────────────────────────────────────────
 # MODEL CACHE
 # ─────────────────────────────────────────────────────────────────
 _rtdetr_model = None
@@ -50,6 +70,7 @@ def get_or_create_session(session_id: str) -> dict:
             "bboxes": [],
             "scores": [],
             "defect": "",
+            "location": "",
             "messages": [],
             "model": "",
         }
@@ -214,6 +235,7 @@ def qwen_qa(session_id: str, user_message: str) -> str:
         )
         context_block = (
             f"- Lỗi đã phát hiện: {session['defect']}\n"
+            f"- Vị trí: {session.get('location') or 'unknown'}\n"
             f"- Số lượng bbox: {n_dets}\n"
             f"- Chi tiết bbox: {bbox_str}\n"
             f"- Mô tả: {session['description']}\n"
@@ -321,6 +343,20 @@ def run_pipeline(image: Image.Image, box_thresh: float,
         parsed = parse_description(description)
         defect_label = parsed.get("defect", "defect") if not parsed.get("skip_guard") else "defect"
         session_image = annotated_pil
+
+        # Override Qwen's location with deterministic bbox-based 3x3 grid
+        # (VLMs are unreliable for spatial reasoning; bbox coords are ground truth)
+        img_w, img_h = image.size
+        computed_location = compute_location_from_bbox(bboxes[0], img_w, img_h)
+        description = re.sub(
+            r"Location:\s*[^\n]*",
+            f"Location: {computed_location}",
+            description,
+            count=1,
+        )
+        if not re.search(r"Location:", description):
+            description = f"{description}\nLocation: {computed_location}"
+        parsed["location"] = computed_location
     else:
         img_rgb = np.array(image.convert("RGB"))
         h, w = img_rgb.shape[:2]
@@ -351,6 +387,7 @@ def run_pipeline(image: Image.Image, box_thresh: float,
         "bboxes": bboxes,
         "scores": scores,
         "defect": defect_label,
+        "location": parsed.get("location", "") if n > 0 else "",
         "messages": [],
         "model": "RT-DETR (Ultralytics rtdetr-l)",
     })
