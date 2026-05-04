@@ -28,6 +28,9 @@ NMS_THRESHOLD = 0.50
 MAX_BOXES = 1
 DEVICE         = "cuda" if torch.cuda.is_available() else "cpu"
 QWEN_DISABLED  = os.environ.get("QWEN_DISABLED", "0") == "1"
+# Q&A context window: 10 messages = 5 turns
+# Cover QC inspection workflow (4-5 questions/defect: type, location, severity, decision, follow-up)
+MAX_HISTORY_MESSAGES = 10
 warnings.filterwarnings("ignore")
 
 # ─────────────────────────────────────────────────────────────────
@@ -241,7 +244,7 @@ def qwen_qa(session_id: str, user_message: str) -> str:
             f"- Mô tả: {session['description']}\n"
         )
 
-    history = session["messages"][-6:]
+    history = session["messages"][-MAX_HISTORY_MESSAGES:]
     history_block = ""
     if history:
         lines = [
