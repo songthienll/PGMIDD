@@ -7,7 +7,7 @@ Pipeline:
   → No defect → Green banner "GOOD"
 
 Run:
-  python notebooks/demo_redetr/gradio_demo.py --port 7860 --share
+  python notebooks/demo/gradio_demo.py --port 7860 --share
 """
 
 import os, re, warnings, argparse, uuid
@@ -26,17 +26,13 @@ RTDETR_WEIGHT = "/content/drive/MyDrive/AIP491/results/RE-DETR/runs/rtdetr_mvtec
 BOX_THRESHOLD = 0.25
 NMS_THRESHOLD = 0.50
 MAX_BOXES = 1
+MAX_HISTORY_MESSAGES = 10
 DEVICE         = "cuda" if torch.cuda.is_available() else "cpu"
 QWEN_DISABLED  = os.environ.get("QWEN_DISABLED", "0") == "1"
-# Q&A context window: 10 messages = 5 turns
-# Cover QC inspection workflow (4-5 questions/defect: type, location, severity, decision, follow-up)
-MAX_HISTORY_MESSAGES = 10
 warnings.filterwarnings("ignore")
 
 # ─────────────────────────────────────────────────────────────────
 # LOCATION HELPER (3x3 grid mapping from bbox center)
-# Replaces Qwen VL's spatial reasoning with deterministic rule-based mapping.
-# VLMs have known weakness in spatial grounding — bbox coords are reliable.
 # ─────────────────────────────────────────────────────────────────
 def compute_location_from_bbox(bbox, img_w: int, img_h: int) -> str:
     """Map bbox center to 3x3 grid: top/center/bottom × left/center/right."""
@@ -348,7 +344,6 @@ def run_pipeline(image: Image.Image, box_thresh: float,
         session_image = annotated_pil
 
         # Override Qwen's location with deterministic bbox-based 3x3 grid
-        # (VLMs are unreliable for spatial reasoning; bbox coords are ground truth)
         img_w, img_h = image.size
         computed_location = compute_location_from_bbox(bboxes[0], img_w, img_h)
         description = re.sub(
